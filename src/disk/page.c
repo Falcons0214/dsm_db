@@ -3,16 +3,11 @@
 #include "../../include/page.h"
 #include <stdio.h>
 
-/*
- * Page "entry" operation 
- */
-// other
 int get_max_entries(uint16_t width)
 {
     return (int)((PAGESIZE - PAGEHEADERSIZE) / (width + SLOTENTRYSIZE));
 }
 
-// page data op
 char *get_page_data_table_addr(page_s *page)
 {
     return ((char*)page + PAGEHEADERSIZE);
@@ -28,7 +23,6 @@ bool is_page_full(page_s *page)
     return ((PAGESIZE - PAGEHEADERSIZE) < ((page->data_width + SLOTENTRYSIZE) * (page->record_num + 1))) ? true : false;
 }
 
-// page slot op
 char *get_page_slotmap(page_s *page)
 {
     return ((char*)page + PAGESIZE) - SLOTENTRYSIZE;
@@ -64,7 +58,6 @@ uint16_t get_slot_value(uint16_t slot)
     return (slot & SLOTVALUEMASK);
 }
 
-// page checksum op
 uint16_t calculate_checksum(page_s *page)
 {
     uint16_t v = 0;
@@ -87,58 +80,31 @@ bool examine_checksum(page_s *page)
     return (page->checksum == calculate_checksum(page)) ? true : false;
 }
 
-// Page entry op
-bool check_item_exist(page_s* page, uint16_t index)
+/* above is use for system (unporting)
+ * ----------------------------------------
+ */
+
+
+/*
+ * Basic page entry (a attribute value) operation.
+ * 
+ * Insert: Insert by provide value (char*), return the index which is value store.
+ * Delete: Delete by provide index (uint16_t), return delete status.
+ * Update: Update by provide value (char*) & index (uint16_t), return update status.
+ */
+bool p_entry_check_exist_by_index(page_s* page, uint16_t index)
 {
     uint16_t *cur_slot = (uint16_t*)get_slot_addr(page, index);
     return ((*cur_slot) & SLOTSEATBBITMASK) ? false : true;
 }
 
-int search_item_by_value(page_s *page, char *tar, uint16_t id)
-{
-    char *cur_data = get_page_data_table_addr(page);
-
-    int loop = get_max_entries(page->data_width);
-    int index;
-
-    for (index=0; index < loop; index++, cur_data += page->data_width)  
-        if (memcmp(cur_data, tar, page->data_width) == 0 && index == id)
-            break;
-
-    index = (index == loop) ? -1 : index;
-
-    return index;
-}
-
-void replace_item(char *old, char *new, uint16_t size)
-{
-    memcpy(old, new, size);
-}
-
-// Page entry operation
-void page_init(page_s *page, uint16_t width, uint32_t id, uint32_t empty_id, uint32_t next_id)
-{
-    memset(page, 0, PAGESIZE);
-    page->page_id = id;
-    page->next_page_id = next_id;
-    page->next_empty_page_id = empty_id;
-    page->data_width = width;
-
-    uint16_t *slot_map = (uint16_t*)get_page_slotmap(page);
-    int loop = get_max_entries(page->data_width);
-    for (uint16_t i=0; i<loop-1; i++)
-        *(slot_map - i) = (i+1);
-
-    update_checksum(page);
-}
-
-uint16_t insert_item_in_page(page_s *page, char *item, uint16_t len)
+uint16_t p_entry_insert_by_value(page_s *page, char *item, uint16_t len)
 {
     if (page->free_slot_offset == PAGEISFULL)
-        return P_PAGEFULL;
+        return P_ENTRY_PAGEFULL;
 
     if (examine_checksum(page) == false)
-        return P_CHECKSUMERROR;
+        return P_ENTRY_CHECKSUMERROR;
 
     char *data_addr = get_page_data_entry_addr(page, page->free_slot_offset);
     uint16_t *free_slot = (uint16_t*)get_free_slot_addr(page);
@@ -161,15 +127,13 @@ uint16_t insert_item_in_page(page_s *page, char *item, uint16_t len)
     return position;
 }
 
-uint16_t delete_item_in_page(page_s *page, char *item, uint16_t id)
+uint16_t p_entry_delete_by_index(page_s *page, uint16_t index)
 {
     if (examine_checksum(page) == false)
-        return P_CHECKSUMERROR;
+        return P_ENTRY_CHECKSUMERROR;
 
-    int index = search_item_by_value(page, item, id);
-
-    if (index == -1 || check_item_exist(page, index)) // can't find item or unexist
-        return P_ITEMNOTFOUND;
+    if (p_entry_check_exist_by_index(page, index))
+        return P_ENTRY_ITEMNOTFOUND;
 
     uint16_t *cur_slot = (uint16_t*)get_slot_addr(page, index);
 
@@ -180,29 +144,41 @@ uint16_t delete_item_in_page(page_s *page, char *item, uint16_t id)
     page->record_num -= 1;
 
     update_checksum(page);
-    return P_ACCEPT;
+    return P_ENTRY_ACCEPT;
 }
 
-bool update_item(page_s *page, char *old, char *new, uint16_t id)
+uint16_t p_entry_updata_by_value(page_s *page, char *old, char *new, uint16_t index)
 {
     if (examine_checksum(page) == false)
-        return false;
-    
-    int index = search_item_by_value(page, old, id);
+        return P_ENTRY_CHECKSUMERROR;
 
-    if (index == -1)
-        return false;
+    if (p_entry_check_exist_by_index(page, index))
+        return P_ENTRY_ITEMNOTFOUND;
 
     char *data_addr = get_page_data_entry_addr(page, index);
 
-    replace_item(data_addr, new, page->data_width);
+    memcpy(data_addr, new, page->data_width);
 
     update_checksum(page);
-    return true;
+    return P_ENTRY_ACCEPT;
 }
 
 
 /*
- * Page operation 
+ * Basic "page" operation.
  */
+void page_init(page_s *page, uint16_t width, uint32_t id, uint32_t empty_id, uint32_t next_id)
+{
+    memset(page, 0, PAGESIZE);
+    page->page_id = id;
+    page->next_page_id = next_id;
+    page->next_empty_page_id = empty_id;
+    page->data_width = width;
 
+    uint16_t *slot_map = (uint16_t*)get_page_slotmap(page);
+    int loop = get_max_entries(page->data_width);
+    for (uint16_t i=0; i<loop-1; i++)
+        *(slot_map - i) = (i+1);
+
+    update_checksum(page);
+}

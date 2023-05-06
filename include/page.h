@@ -15,7 +15,6 @@ typedef struct page_s page_s;
 #define PAGEHEADERSIZE 32
 #define PAGEHPADDINGSIZE (PAGEHEADERSIZE - PAGEHEADER)
 
-// Checksum size
 #define CHECKSUMSIZE 2
 
 /*
@@ -61,15 +60,17 @@ struct page_s
  * 2. Checksum error
  * 3. Accept (return the position)
  */
-#define P_PAGEFULL 0xffff
-#define P_CHECKSUMERROR 0xefff
-#define P_ITEMNOTFOUND 0xdfff
-#define P_ACCEPT 0xcfff
-uint16_t insert_item_in_page(page_s*, char*, uint16_t);
-uint16_t delete_item_in_page(page_s*, char*, uint16_t);
-bool update_item(page_s*, char*, char*, uint16_t);
-void page_init(page_s*, uint16_t, uint32_t, uint32_t, uint32_t);
+#define P_ENTRY_PAGEFULL 0xffff
+#define P_ENTRY_CHECKSUMERROR 0xefff
+#define P_ENTRY_ITEMNOTFOUND 0xdfff
+#define P_ENTRY_ACCEPT 0xcfff
 
+uint16_t p_entry_insert_by_value(page_s*, char*, uint16_t);
+uint16_t p_entry_delete_by_index(page_s*, uint16_t);
+uint16_t p_entry_updata_by_value(page_s*, char*, char*, uint16_t);
+bool p_entry_check_exist_by_index(page_s*, uint16_t);
+
+void page_init(page_s*, uint16_t, uint32_t, uint32_t, uint32_t);
 
 // for test
 char *get_page_data_table_addr(page_s*);
