@@ -80,7 +80,7 @@ bool examine_checksum(page_s *page)
     return (page->checksum == calculate_checksum(page)) ? true : false;
 }
 
-/* above is use for system (unporting)
+/* above use for system (unporting)
  * ----------------------------------------
  */
 

@@ -72,6 +72,9 @@ bool p_entry_check_exist_by_index(page_s*, uint16_t);
 
 void page_init(page_s*, uint16_t, uint32_t, uint32_t, uint32_t);
 
+
+
+
 // for test
 char *get_page_data_table_addr(page_s*);
 char *get_page_slotmap(page_s*);
