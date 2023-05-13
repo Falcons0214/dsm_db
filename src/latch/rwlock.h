@@ -16,7 +16,6 @@ typedef atomic_flag mut_t;
 /*
  * Read-Write lock
  */
-
 #define RWCOUNTINIT 0
 #define RWWRITINGUP 1
 #define RWWRITINGDOWN 0

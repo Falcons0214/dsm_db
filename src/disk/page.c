@@ -115,7 +115,7 @@ uint16_t p_entry_insert_by_value(page_s *page, char *item, uint16_t len)
     else
         set_slot_null(free_slot);
 
-    page->record_num += 1;
+    page->record_num ++;
     set_slot_seat(free_slot);
 
     if (is_page_full(page))
@@ -141,7 +141,7 @@ uint16_t p_entry_delete_by_index(page_s *page, uint16_t index)
 
     *cur_slot = page->free_slot_offset;
     page->free_slot_offset = index;
-    page->record_num -= 1;
+    page->record_num --;
 
     update_checksum(page);
     return P_ENTRY_ACCEPT;

@@ -7,21 +7,22 @@
 
 typedef struct disk_mg_s disk_mg_s;
 
+#define DKREADACCEPT 0
+#define DKWRITEACCEPT 1
+
 struct disk_mg_s
 {
     int db_fd;
-
-
+    
+    uint32_t page_dir_id;
+    uint32_t empty_page;
 };
 
-int db_file_open();
-void db_file_close();
+int dk_db_file_open();
+void dk_db_file_close();
+void dk_load_db_info();
 
-void load_page_dir();
-void load_page_by_id(off_t);
-void load_page_by_range(off_t, off_t);
-
-void write_page_by_id(page_s*);
-
+uint32_t dk_read_page_by_pid(disk_mg_s*, uint32_t, void*);
+uint32_t dk_write_page_by_pid(disk_mg_s*, uint32_t, void*);
 
 #endif /* DISK_H */
