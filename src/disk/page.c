@@ -80,7 +80,7 @@ bool examine_checksum(page_s *page)
     return (page->checksum == calculate_checksum(page)) ? true : false;
 }
 
-/* above use for system (unporting)
+/* above use for system
  * ----------------------------------------
  */
 
@@ -163,9 +163,8 @@ uint16_t p_entry_updata_by_value(page_s *page, char *old, char *new, uint16_t in
     return P_ENTRY_ACCEPT;
 }
 
-
 /*
- * Basic "page" operation.
+ * Basic "page" operation, only access from DB init.
  */
 void page_init(page_s *page, uint16_t width, uint32_t id, uint32_t empty_id, uint32_t next_id)
 {

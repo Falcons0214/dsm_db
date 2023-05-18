@@ -1,9 +1,9 @@
 #ifndef RWLOCK_H
 #define RWLOCK_H
 
-// #include <stdalign.h>
 #include <stdatomic.h>
 #include <stdbool.h>
+#include <pthread.h>
 
 /*
  * Simple mutex lock.
@@ -24,7 +24,7 @@ typedef struct rwlock_s rwlock_s;
 
 struct rwlock_s
 {
-    volatile mut_t mlock;
+    pthread_mutex_t *p_mutex;
     char wflag;
     int read_counter;
 };

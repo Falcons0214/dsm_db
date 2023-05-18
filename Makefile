@@ -21,6 +21,8 @@ linklist: ${COMMON}/linklist.c ${COMMON}/linklist.h
 rwlock: ${SRC}/${LATCH}/rwlock.c ${SRC}/${LATCH}/rwlock.h
 	${CC} -std=${VERSION} -c ${SRC}/${LATCH}/rwlock.c -o ./tmp/rwlock.o
 
+disk: ${SRC}/${DISK}/disk.c ${HEADER}/disk.h
+	${CC} -std=${VERSION} -c ${SRC}/${DISK}/disk.c -o ./tmp/disk.o
 
 page: ${SRC}/${DISK}/page.c ${HEADER}/page.h
 	${CC} -std=${VERSION} -c ${SRC}/${DISK}/page.c -o ./tmp/page.o
@@ -31,15 +33,14 @@ pool: ${SRC}/${POOL}/pool.c ${HEADER}/pool.h rwlock
 
 # below for test
 
-
 t1: linklist error
 	${CC} -std=${VERSION} ${TEST}/t1.c -o ${TEST}/t1
 
 pagetest: page
 	${CC} -std=${VERSION} ${TEST}/pagetest.c -o ${TEST}/pagetest ./tmp/page.o
 
-pooltest: pool error
-	${CC} -std=${VERSION} ${TEST}/pooltest.c -o ${TEST}/pooltest ./tmp/pool.o ./tmp/error.o	./tmp/rwlock.o
+pooltest: pool disk error
+	${CC} -std=${VERSION} ${TEST}/pooltest.c -o ${TEST}/pooltest ./tmp/pool.o ./tmp/error.o	./tmp/rwlock.o ./tmp/disk.o -pthread
 
 removeall:
 	rm ./tmp/*

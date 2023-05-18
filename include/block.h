@@ -1,16 +1,17 @@
 #ifndef BLOCK_H
 #define BLOCK_H
 
-#include <stdint.h>
-
 #include "./page.h"
 #include "../src/latch/rwlock.h"
+
+#include <stdint.h>
 
 typedef struct block_s block_s;
 
 struct block_s
 {
     block_s *next_empty;
+    rwlock_s rwlock;
     page_s *page;
 };
 
@@ -20,30 +21,30 @@ struct block_s
  * Dirty: check page is clear.
  * Occupy: check block is empty.
  */
-#define PIN 0x0001
-#define DIRTY 0x0002
-#define OCCUPY 0x0003
-#define READ 0x0004
-#define WRITE 0x0005
+#define BPIN 0x01
+#define BDIRTY 0x02
+#define BOCCUPY 0x03
+#define BREAD 0x04
+#define BWRITE 0x05
 
-#define PINSET(f) ((*f) |= PIN)
-#define PINCLEAR(f) ((*f) &= 0xfffe)
-#define PINCHECK(f) (f &= PIN) ? true : false
+#define PINSET(f) ((*f) |= BPIN)
+#define PINCLEAR(f) ((*f) &= 0xfe)
+#define PINCHECK(f) (f &= BPIN) ? true : false
 
-#define DIRTYSET(f) ((*f) |= DIRTY)
-#define DIRTYCLEAR(f) ((*f) &= 0xfffd)
-#define DIRTYCHECK(f) (f &= DIRTY) ? true : false
+#define DIRTYSET(f) ((*f) |= BDIRTY)
+#define DIRTYCLEAR(f) ((*f) &= 0xfd)
+#define DIRTYCHECK(f) (f &= BDIRTY) ? true : false
 
-#define OCCUPYSET(f) ((*f) |= OCCUPY)
-#define OCCUPYCLEAR(f) ((*f) &= 0xfffc)
-#define OCCUPYCHECK(f) (f &= OCCUPY) ? true : false
+#define OCCUPYSET(f) ((*f) |= BOCCUPY)
+#define OCCUPYCLEAR(f) ((*f) &= 0xfc)
+#define OCCUPYCHECK(f) (f &= BOCCUPY) ? true : false
 
-#define READSET(f) ((*f) |= READ)
-#define READCLEAR(f) ((*f) &= 0xfffb)
-#define READCHECK(f) (f &= READ) ? true : false
+#define READSET(f) ((*f) |= BREAD)
+#define READCLEAR(f) ((*f) &= 0xfb)
+#define READCHECK(f) (f &= BREAD) ? true : false
 
-#define WRITESET(f) ((*f) |= WRITE)
-#define WRITECLEAR(f) ((*f) &= 0xfffa)
-#define WRITECHECK(f) (f &= WRITE) ? true : false
+#define WRITESET(f) ((*f) |= BWRITE)
+#define WRITECLEAR(f) ((*f) &= 0xfa)
+#define WRITECHECK(f) (f &= BWRITE) ? true : false
 
 #endif /* BLOCK_H */

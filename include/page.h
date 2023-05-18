@@ -10,12 +10,12 @@ typedef struct page_s page_s;
 /*
  * Page Id 
  */
-#define PAGEIDNULL 0xffff
+#define PAGEIDNULL 0xffffffff
 
 /*
  * Page & Page Header size
  */
-#define PAGESIZE 4096
+#define PAGESIZE 4096 // !!
 #define PAGEHEADER 22
 #define PAGEHEADERSIZE 32
 #define PAGEHPADDINGSIZE (PAGEHEADERSIZE - PAGEHEADER)
@@ -42,6 +42,22 @@ typedef struct page_s page_s;
  *  Page Header Layout: (size in bytes)
  *  Page Size: 4 KB
  *  Page Header Size: 32 btyes
+ * 
+ *  -----------------------------------------------
+ * | Page_id (4) | Next_page_id (4) | checksum (2) |
+ *  -----------------------------------------------
+ * | Next_empty_page_id (4) | record_number (2)    |
+ *  -----------------------------------------------
+ * | Data_width (2) | Flags (2) | free_slot_offset-|
+ *  -----------------------------------------------
+ * |-(2) | Reserve (10)                            |
+ *  -----------------------------------------------
+ * | Data start ---->                              |
+ *  -----------------------------------------------
+ * |     Full (When data tail meet slot head )     |
+ *  -----------------------------------------------
+ * |                         <---- Data_slot_table |
+ *  -----------------------------------------------
  */
 struct page_s
 {
@@ -70,15 +86,27 @@ struct page_s
 #define P_ENTRY_ITEMNOTFOUND 0xdfff
 #define P_ENTRY_ACCEPT 0xcfff
 
+// for system
+inline int get_max_entries(uint16_t);
+inline char *get_page_data_table_addr(page_s*);
+inline char *get_page_data_entry_addr(page_s*, uint16_t);
+inline bool is_page_full(page_s*);
+inline char *get_page_slotmap(page_s*);
+inline char *get_free_slot_addr(page_s*);
+inline char *get_slot_addr(page_s*, int);
+inline void set_slot_null(uint16_t*);
+inline void set_slot_seat(uint16_t*);
+inline void set_slot_unseat(uint16_t*);
+inline uint16_t get_slot_value(uint16_t);
+inline uint16_t calculate_checksum(page_s*);
+inline void update_checksum(page_s*);
+inline bool examine_checksum(page_s*);
+
+// interface
 uint16_t p_entry_insert_by_value(page_s*, char*, uint16_t);
 uint16_t p_entry_delete_by_index(page_s*, uint16_t);
 uint16_t p_entry_updata_by_value(page_s*, char*, char*, uint16_t);
-bool p_entry_check_exist_by_index(page_s*, uint16_t);
-
+inline bool p_entry_check_exist_by_index(page_s*, uint16_t);
 void page_init(page_s*, uint16_t, uint32_t, uint32_t, uint32_t);
-
-// for test
-char *get_page_data_table_addr(page_s*);
-char *get_page_slotmap(page_s*);
 
 #endif /* PAGE_H */
