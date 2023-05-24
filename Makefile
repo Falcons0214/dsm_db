@@ -1,56 +1,38 @@
 CC = clang
-VERSION = c11
+CFLAGS = -Wall -pthread -std=c11
 
 SRC = ./src
-HEADER = ./include
+INCLUDE = ./include
 COMMON = ./common
 TEST = ./test
 
-DISK = disk
-ERROR = error
-LATCH = latch
-POOL = pool
+DISK = ${SRC}/disk
+ERROR = ${SRC}/error
+LATCH = ${SRC}/latch
+POOL = ${SRC}/pool
 
-error: ${SRC}/${ERROR}/error.c ${SRC}/${ERROR}/error.h
-	${CC} -std=${VERSION} -c ${SRC}/${ERROR}/error.c -o ./tmp/error.o
-
-rqueue: ${COMMON}/rqueue.c ${COMMON}/rqueue.h
-	${CC} -std=${VERSION} -c ${COMMON}/rqueue.c -o ./tmp/rqueue.o
-
-tpool: ${COMMON}/tpool.c ${COMMON}/tpool.h
-	${CC} -std=${VERSION} -c ${COMMON}/tpool.c -o ./tmp/tpool.o
-
-linklist: ${COMMON}/linklist.c ${COMMON}/linklist.h
-	${CC} -std=${VERSION} -c ${COMMON}/linklist.c -o ./tmp/linklist.o
-
-rwlock: ${SRC}/${LATCH}/rwlock.c ${SRC}/${LATCH}/rwlock.h
-	${CC} -std=${VERSION} -c ${SRC}/${LATCH}/rwlock.c -o ./tmp/rwlock.o
-
-disk: ${SRC}/${DISK}/disk.c ${HEADER}/disk.h
-	${CC} -std=${VERSION} -c ${SRC}/${DISK}/disk.c -o ./tmp/disk.o
-
-page: ${SRC}/${DISK}/page.c ${HEADER}/page.h
-	${CC} -std=${VERSION} -c ${SRC}/${DISK}/page.c -o ./tmp/page.o
-
-pool: ${SRC}/${POOL}/pool.c ${HEADER}/pool.h rwlock
-	${CC} -std=${VERSION} -c ${SRC}/${POOL}/pool.c -o ./tmp/pool.o
+%.o: %.c
+	$(CC) -o $@ -c $< $(CFLAGS)
 
 # below for test
 
-t1: linklist error
-	${CC} -std=${VERSION} ${TEST}/t1.c -o ${TEST}/t1
+t1: ${COMMON}/linklist.o ${ERROR}/error.o ${TEST}/t1.c
+	${CC} -o ${TEST}/$@ $^ ${CFLAGS}
+	${TEST}/$@
 
-pagetest: page
-	${CC} -std=${VERSION} ${TEST}/pagetest.c -o ${TEST}/pagetest ./tmp/page.o
+pagetest: ${DISK}/page.o ${TEST}/pagetest.c
+	${CC} -o ${TEST}/$@ $^ ${CFLAGS}
+	${TEST}/$@
 
-pooltest: pool disk error
-	${CC} -std=${VERSION} ${TEST}/pooltest.c -o ${TEST}/pooltest ./tmp/pool.o ./tmp/error.o	./tmp/rwlock.o ./tmp/disk.o -pthread
+pooltest: ${DISK}/pool.o ${DISK}/disk.o ${ERROR}/error.o ${TEST}/pooltest.c
+	${CC} -o ${TEST}/$@ $^ ${CFLAGS}
+	${TEST}/$@
 
-tpooltest: tpool
-	${CC} -std=${VERSION} ${TEST}/tpooltest.c -o ${TEST}/tpooltest ./tmp/tpool.o
+tpooltest: ${COMMON}/tpool.o ${COMMON}/rqueue.o ${TEST}/tpooltest.c
+	${CC} -o ${TEST}/$@ $^ ${CFLAGS}
+	${TEST}/$@
 
-lfqtest: rqueue
-	${CC} -std=${VERSION} ${TEST}/lfqtest.c -o ${TEST}/lfqtest ./tmp/rqueue.o
+rqtest: ${COMMON}/rqueue.o ${TEST}/rqtest.c
+	${CC} -o ${TEST}/$@ $^ ${CFLAGS}
+	${TEST}/$@
 
-removeall:
-	rm ./tmp/*

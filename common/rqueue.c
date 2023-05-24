@@ -32,7 +32,10 @@ bool rq_enqueue(rqueue_s *rq, void *node)
 
     pthread_mutex_lock(&rq->mlock);
     insr_index = rq->tail;
-    if (rq->qvalues[insr_index]) return false;
+    if (rq->qvalues[insr_index]) {
+        pthread_mutex_unlock(&rq->mlock);
+        return false;
+    }
     rq->tail %= rq->qsize;
     rq->tail ++;
     pthread_mutex_unlock(&rq->mlock);
@@ -48,7 +51,10 @@ void* rq_dequeue(rqueue_s *rq)
 
     pthread_mutex_lock(&rq->mlock);
     rem_index = rq->head;
-    if (!rq->qvalues[rem_index]) return NULL;
+    if (!rq->qvalues[rem_index]) {
+        pthread_mutex_unlock(&rq->mlock);
+        return NULL;
+    }
     rq->head %= rq->qsize;
     rq->head ++;
     pthread_mutex_unlock(&rq->mlock);

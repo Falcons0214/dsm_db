@@ -2,3 +2,4 @@ test
 tmp
 test_file
 .vscode
+*.o
