@@ -14,6 +14,11 @@ POOL = pool
 error: ${SRC}/${ERROR}/error.c ${SRC}/${ERROR}/error.h
 	${CC} -std=${VERSION} -c ${SRC}/${ERROR}/error.c -o ./tmp/error.o
 
+rqueue: ${COMMON}/rqueue.c ${COMMON}/rqueue.h
+	${CC} -std=${VERSION} -c ${COMMON}/rqueue.c -o ./tmp/rqueue.o
+
+tpool: ${COMMON}/tpool.c ${COMMON}/tpool.h
+	${CC} -std=${VERSION} -c ${COMMON}/tpool.c -o ./tmp/tpool.o
 
 linklist: ${COMMON}/linklist.c ${COMMON}/linklist.h
 	${CC} -std=${VERSION} -c ${COMMON}/linklist.c -o ./tmp/linklist.o
@@ -26,7 +31,6 @@ disk: ${SRC}/${DISK}/disk.c ${HEADER}/disk.h
 
 page: ${SRC}/${DISK}/page.c ${HEADER}/page.h
 	${CC} -std=${VERSION} -c ${SRC}/${DISK}/page.c -o ./tmp/page.o
-
 
 pool: ${SRC}/${POOL}/pool.c ${HEADER}/pool.h rwlock
 	${CC} -std=${VERSION} -c ${SRC}/${POOL}/pool.c -o ./tmp/pool.o
@@ -41,6 +45,12 @@ pagetest: page
 
 pooltest: pool disk error
 	${CC} -std=${VERSION} ${TEST}/pooltest.c -o ${TEST}/pooltest ./tmp/pool.o ./tmp/error.o	./tmp/rwlock.o ./tmp/disk.o -pthread
+
+tpooltest: tpool
+	${CC} -std=${VERSION} ${TEST}/tpooltest.c -o ${TEST}/tpooltest ./tmp/tpool.o
+
+lfqtest: rqueue
+	${CC} -std=${VERSION} ${TEST}/lfqtest.c -o ${TEST}/lfqtest ./tmp/rqueue.o
 
 removeall:
 	rm ./tmp/*

@@ -21,11 +21,11 @@ uint32_t page_swap_out(sub_pool_s *spm, disk_mg_s *dm, uint32_t block_index)
     spm->page_state_table[block_index] = 0;
     spm->page_priority_table[block_index] = 0;
 
-    pthread_mutex_lock(spm->p_mutex);
+    pthread_mutex_lock(spm->sub_pool_mutex);
     block->next_empty = spm->empty_block;
     spm->empty_block = block;
     spm->used_blocks --;
-    pthread_mutex_unlock(spm->p_mutex);
+    pthread_mutex_unlock(spm->sub_pool_mutex);
 
     if (DIRTYCHECK(page_state)) {
         if (dk_write_page_by_pid(dm, block->page->page_id, (void*)block->page) == DKWRITEINCOMP)
@@ -36,19 +36,18 @@ uint32_t page_swap_out(sub_pool_s *spm, disk_mg_s *dm, uint32_t block_index)
 }
 
 // uncheck, may accessed by multi thread !!
-uint32_t page_bring_in(sub_pool_s *spm, disk_mg_s *dm, uint32_t page_id) // need check exist empty block, before loading page.
+uint32_t page_bring_in(sub_pool_s *spm, disk_mg_s *dm, uint32_t page_id)
 {
     block_s *empty;
     uint32_t block_index;
 
-    pthread_mutex_lock(spm->p_mutex);
+    pthread_mutex_lock(spm->sub_pool_mutex);
     empty = spm->empty_block;
     spm->empty_block = spm->empty_block->next_empty;
     block_index = spm->used_blocks;
     spm->used_blocks ++;
-    pthread_mutex_unlock(spm->p_mutex);
-
     spm->block_addr_table[block_index] = empty;
+    pthread_mutex_unlock(spm->sub_pool_mutex);
 
     if (dk_read_page_by_pid(dm, page_id, (void*)empty->page) == DKREADINCOMP)
         return PAGELOADFAIL;
@@ -97,19 +96,35 @@ pool_mg_s* pool_open()
 
     page_s *tmp_p = (page_s*)pool->pool;
     block_s *tmp_b = pool->block_header;
+    sub_pool_s *temp;
 
     int cur_sub_pool = 0;
     for (int i=0; i<PAGEBLOCKS; i++, tmp_p++, tmp_b++) {
         if (i % SUBPOOLBLOCKS == 0) {
-            pool->sub_pool[cur_sub_pool].buf_list = pool->block_header;
-            pool->sub_pool[cur_sub_pool].empty_block = tmp_b;
-            pool->sub_pool[cur_sub_pool].pages = (page_s*)tmp_p;
-            pool->sub_pool[cur_sub_pool].used_blocks = 0;
+            temp = &pool->sub_pool[cur_sub_pool];
 
-            pool->sub_pool[cur_sub_pool].p_mutex = (pthread_mutex_t*)malloc(sizeof(pthread_mutex_t));
-            pthread_mutex_init(pool->sub_pool[cur_sub_pool].p_mutex, NULL);
+            temp->buf_list = pool->block_header;
+            temp->empty_block = tmp_b;
+            temp->pages = (page_s*)tmp_p;
+            temp->used_blocks = 0;
 
-            memset(pool->sub_pool[cur_sub_pool].page_state_table, 0, SUBPOOLBLOCKS);
+            temp->block_addr_table = (block_s**)malloc(sizeof(block_s*) * SUBPOOLBLOCKS);
+            ECHECK_MALLOC(temp->block_addr_table, FILELOCATION);
+
+            temp->page_state_table = (uint8_t*)malloc(sizeof(uint8_t) * SUBPOOLBLOCKS);
+            ECHECK_MALLOC(temp->page_state_table, FILELOCATION);
+
+            temp->page_priority_table = (uint8_t*)malloc(sizeof(uint8_t) * SUBPOOLBLOCKS);
+            ECHECK_MALLOC(temp->page_priority_table, FILELOCATION);
+
+            temp->pending_table = (uint32_t)malloc(sizeof(uint32_t) * SUBPOOLBLOCKS);
+            ECHECK_MALLOC(temp->pending_table, FILELOCATION);
+
+            temp->sub_pool_mutex = (pthread_mutex_t*)malloc(sizeof(pthread_mutex_t));
+            ECHECK_MALLOC(temp->sub_pool_mutex, FILELOCATION);
+            pthread_mutex_init(pool->sub_pool[cur_sub_pool].sub_pool_mutex, NULL);
+
+            memset(temp->page_state_table, 0, SUBPOOLBLOCKS);
             cur_sub_pool ++;
         }
         if (i % SUBPOOLBLOCKS == SUBPOOLBLOCKS - 1)
@@ -124,7 +139,7 @@ pool_mg_s* pool_open()
     return pool;
 }
 
-void p_scheduler(pool_mg_s *pm, disk_mg_s *dm, uint32_t *page_id, int len)
+void pool_schedule(pool_mg_s *pm, disk_mg_s *dm, uint32_t need_blocks)
 {
     
 }
@@ -149,7 +164,7 @@ uint32_t get_page_pb_index(pool_mg_s *pm, uint32_t page_id)
     uint32_t i, h, b = 0;
     for (i=0; b == 0 && i<SUBPOOLS; i++) {
         for (h=0; h<pm->sub_pool[i].used_blocks; h++) {
-            if ((pm->sub_pool[i].block_addr_table[h]->page->page_id == page_id)) {
+            if (pm->sub_pool[i].block_addr_table[h]->page->page_id == page_id) {
                 b = 1;
                 break;
             }
@@ -158,14 +173,36 @@ uint32_t get_page_pb_index(pool_mg_s *pm, uint32_t page_id)
     return (b) ? combine_index(i, h) : PAGENOTINPOOL;
 }
 
+bool is_pool_full(pool_mg_s *pm)
+{
+    int sum = 0;
+    for (int i=0; i<SUBPOOLS; i++)
+        sum += pm->sub_pool[i].used_blocks;
+    return (sum == PAGEBLOCKS) ? true : false;
+}
+
+void block_priority_incr(pool_mg_s *pm, uint32_t pb_index)
+{
+
+}
+
 uint32_t mp_access_page_by_pid(pool_mg_s *pm, disk_mg_s *dm, uint32_t page_id)
 {
     uint32_t pb_index = get_page_pb_index(pm, page_id);
-    
-    if (pb_index != PAGENOTINPOOL)
+
+    if (pb_index != PAGENOTINPOOL) {
+        block_priority_incr(pm, pb_index);
         return pb_index;
+    }
+
+    // check is it have different thread access the same page, if exist combine the access.
+
+
 
     // if not, load it !
+    if (is_pool_full(pm))
+        pool_schedule(pm, dm, 1);
+
 
     // if pool is full, p_scheduler();
     

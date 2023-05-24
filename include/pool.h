@@ -12,7 +12,7 @@
 
 typedef struct pool_mg_s pool_mg_s;
 typedef struct sub_pool_s sub_pool_s;
-typedef struct w_node w_node;
+// typedef struct w_node w_node;
 
 #define PAGEBLOCKS 64
 #define POOLSIZE (PAGESIZE * PAGEBLOCKS)
@@ -25,9 +25,8 @@ typedef struct w_node w_node;
 #define PAGESWAPFAIL UINT32_MAX - 3
 #define PAGEISPIN UINT32_MAX - 4
 
-// for pb_index state, use [255] maximun state: 1677215
+// for pb_index state, use [255] maximun status: 1677215
 #define PAGENOTINPOOL UINT32_MAX
-
 
 // struct w_node
 // {
@@ -40,19 +39,20 @@ struct sub_pool_s
 {
     block_s *buf_list;
     page_s *pages;
-
+    
+    /*
+     * Why separate state_table & priority table from block, because locality.
+     * Page State Table: Record state about page, like: pin, dirty ...
+     * Page Prio Table: Use for schedule
+     * Pending Table: Use for check those pages, they want be access but not in memory yet.
+     */
     uint32_t used_blocks;
-
     block_s *empty_block;
-    block_s *block_addr_table[SUBPOOLBLOCKS];
-
-    // Why separate state_table & priority table, because locality.
-    // record state about page, like: pin, dirty ...
-    uint8_t page_state_table[SUBPOOLBLOCKS];
-    // use for schedule
-    uint8_t page_priority_table[SUBPOOLBLOCKS];
-
-    pthread_mutex_t *p_mutex;
+    block_s **block_addr_table;
+    uint8_t *page_state_table;
+    uint8_t *page_priority_table;
+    uint32_t *pending_table;
+    pthread_mutex_t *sub_pool_mutex;
 };
 
 struct pool_mg_s
@@ -64,16 +64,15 @@ struct pool_mg_s
     list_s waiting_queue;
 };
 
-// for system
 inline void separate_index(uint32_t, uint8_t*, uint32_t*);
 inline uint32_t combine_index(uint32_t, uint32_t);
+inline bool is_pool_full(pool_mg_s*);
+void block_priority_incr(pool_mg_s*, uint32_t);
 
 pool_mg_s* pool_open();
 void pool_close();
-
-void p_scheduler(pool_mg_s*, disk_mg_s*, uint32_t*, int);
+void pool_schedule(pool_mg_s*, disk_mg_s*, uint32_t);
 uint32_t find_useful_pool(pool_mg_s*);
-
 uint32_t page_swap_out(sub_pool_s*, disk_mg_s*, uint32_t);
 uint32_t page_bring_in(sub_pool_s*, disk_mg_s*, uint32_t);
 
