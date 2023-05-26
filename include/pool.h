@@ -44,14 +44,14 @@ struct sub_pool_s
      * Why separate state_table & priority table from block, because locality.
      * Page State Table: Record state about page, like: pin, dirty ...
      * Page Prio Table: Use for schedule
-     * Pending Table: Use for check those pages, they want be access but not in memory yet.
      */
     uint32_t used_blocks;
     block_s *empty_block;
+
     block_s **block_addr_table;
     uint8_t *page_state_table;
     uint8_t *page_priority_table;
-    uint32_t *pending_table;
+
     pthread_mutex_t *sub_pool_mutex;
 };
 
@@ -61,6 +61,7 @@ struct pool_mg_s
     block_s *block_header;
     char *pool;
 
+    // waiting_queue: Use for check those pages, they want be access but not in memory yet.
     list_s waiting_queue;
 };
 
@@ -71,10 +72,10 @@ void block_priority_incr(pool_mg_s*, uint32_t);
 
 pool_mg_s* pool_open();
 void pool_close();
-void pool_schedule(pool_mg_s*, disk_mg_s*, uint32_t);
+bool pool_schedule(pool_mg_s*, disk_mg_s*, uint32_t);
 uint32_t find_useful_pool(pool_mg_s*);
-uint32_t page_swap_out(sub_pool_s*, disk_mg_s*, uint32_t);
-uint32_t page_bring_in(sub_pool_s*, disk_mg_s*, uint32_t);
+uint32_t page_swap_out(pool_mg_s*, disk_mg_s*, uint32_t);
+uint32_t page_bring_in(pool_mg_s*, disk_mg_s*, uint32_t, uint32_t);
 
 /*
  * mp_access_page_by_pid:
