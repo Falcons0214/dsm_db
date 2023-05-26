@@ -20,7 +20,7 @@ rqueue_s* rq_create(size_t size)
     return rq;
 }
 
-void rq_destory(rqueue_s *rq) // Didn't free node inside.
+void rq_destory(rqueue_s *rq) // Didn't free nodes inside.
 {
     free(rq->qvalues);
     free(rq);
@@ -63,4 +63,9 @@ void* rq_dequeue(rqueue_s *rq)
     rq->qvalues[rem_index] = NULL;
 
     return rem_node;
+}
+
+bool rq_isempty(rqueue_s *rq)
+{
+    return (rq->head == rq->tail && rq->qvalues[rq->head] == NULL) ? true : false;
 }

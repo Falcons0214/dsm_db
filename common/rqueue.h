@@ -15,11 +15,15 @@ struct rqueue_s
     size_t qsize;
     void **qvalues;
     pthread_mutex_t mlock;
+    pthread_cond_t cond_nonempty;
 };
 
 rqueue_s* rq_create(size_t size);
 void rq_destory(rqueue_s*);
 bool rq_enqueue(rqueue_s*,void*);
 void* rq_dequeue(rqueue_s*);
+bool rq_isempty(rqueue_s*);
+
+
 
 #endif /* LFRQUEUE */
