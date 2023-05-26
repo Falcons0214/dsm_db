@@ -65,7 +65,7 @@ uint16_t calculate_checksum(page_s *page)
     int loop = PAGESIZE / CHECKSUMSIZE;
 
     cur += 1; // skip checksum
-    for (int i=1; i<loop; i++, cur++)
+    for (int i = 1; i < loop; i ++, cur ++)
         v ^= *cur;
     return v;
 }
@@ -80,7 +80,7 @@ bool examine_checksum(page_s *page)
     return (page->checksum == calculate_checksum(page)) ? true : false;
 }
 
-/* above use for system
+/* above use for system 
  * ----------------------------------------
  */
 
@@ -176,7 +176,7 @@ void page_init(page_s *page, uint16_t width, uint32_t id, uint32_t empty_id, uin
 
     uint16_t *slot_map = (uint16_t*)get_page_slotmap(page);
     int loop = get_max_entries(page->data_width);
-    for (uint16_t i=0; i<loop-1; i++)
+    for (uint16_t i = 0; i < loop-1; i ++)
         *(slot_map - i) = (i+1);
 
     update_checksum(page);
