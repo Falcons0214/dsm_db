@@ -1,3 +1,6 @@
+#ifndef THREADPOOL_H
+#define THREADPOOL_H
+
 #include <pthread.h>
 
 typedef struct __tpool_future *tpool_future_t;
@@ -43,3 +46,5 @@ void *tpool_future_get(tpool_future_t future, unsigned int milliseconds,
  * a future object does not prevent a pending task from being executed.
  */
 int tpool_future_destroy(tpool_future_t future);
+
+#endif /* THREADPOOL_H */

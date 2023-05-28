@@ -28,7 +28,7 @@ t1: ${COMMON}/linklist.o ${ERROR}/error.o ${TEST}/t1.c
 pagetest: ${DISK}/page.o ${TEST}/pagetest.c
 	${test_template}
 
-pooltest: ${DISK}/pool.o ${DISK}/disk.o ${ERROR}/error.o ${TEST}/pooltest.c
+pooltest: ${POOL}/pool.o ${DISK}/disk.o ${ERROR}/error.o ${TEST}/pooltest.c
 	${test_template}
 
 tpooltest: ${COMMON}/threadpool.o ${TEST}/tpooltest.c
