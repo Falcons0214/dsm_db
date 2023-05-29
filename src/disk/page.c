@@ -166,12 +166,11 @@ uint16_t p_entry_updata_by_value(page_s *page, char *old, char *new, uint16_t in
 /*
  * Basic "page" operation, only access from DB init.
  */
-void page_init(page_s *page, uint16_t width, uint32_t id, uint32_t empty_id, uint32_t next_id)
+void page_init(page_s *page, uint16_t width, uint32_t id, uint32_t next_id)
 {
     memset(page, 0, PAGESIZE);
     page->page_id = id;
     page->next_page_id = next_id;
-    page->next_empty_page_id = empty_id;
     page->data_width = width;
 
     uint16_t *slot_map = (uint16_t*)get_page_slotmap(page);

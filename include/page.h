@@ -106,6 +106,6 @@ uint16_t p_entry_insert_by_value(page_s*, char*, uint16_t);
 uint16_t p_entry_delete_by_index(page_s*, uint16_t);
 uint16_t p_entry_updata_by_value(page_s*, char*, char*, uint16_t);
 inline bool p_entry_check_exist_by_index(page_s*, uint16_t);
-void page_init(page_s*, uint16_t, uint32_t, uint32_t, uint32_t);
+void page_init(page_s*, uint16_t, uint32_t, uint32_t);
 
 #endif /* PAGE_H */
