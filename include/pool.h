@@ -18,12 +18,13 @@ typedef struct sub_pool_s sub_pool_s;
 #define POOLSIZE (PAGESIZE * PAGEBLOCKS)
 #define SUBPOOLS 4
 #define SUBPOOLBLOCKS (PAGEBLOCKS / SUBPOOLS)
+#define SYSTEMSUBPOOLINDEX 0
 
-#define PAGELOADACCP 0
-#define PAGELOADFAIL 1
-#define PAGESWAPACCP 2
-#define PAGESWAPFAIL 3
-#define PAGECANFREE 4
+#define PAGELOADACCP UINT32_MAX - 0
+#define PAGELOADFAIL UINT32_MAX - 1
+#define PAGESWAPACCP UINT32_MAX - 2
+#define PAGESWAPFAIL UINT32_MAX - 3
+#define PAGECANFREE UINT32_MAX - 4
 
 struct sub_pool_s
 {
@@ -40,17 +41,28 @@ struct pool_mg_s
     sub_pool_s sub_pool[SUBPOOLS];
     block_s *block_header;
     char *pool;
-
     void *address_index_table[SUBPOOLS];
 };
  
 inline int get_block_spm_index(pool_mg_s*, block_s*);
-
 uint32_t page_swap_out(disk_mg_s*, block_s*);
 uint32_t page_bring_in(disk_mg_s*, uint32_t, block_s*);
 
-pool_mg_s* mp_pool_open(); 
+
+/*
+ * Buffer Pool Interface
+ */
+pool_mg_s* mp_pool_open();
 void mp_pool_close();
+
+block_s* mp_page_open(pool_mg_s*, disk_mg_s*, uint32_t);
+block_s** mp_pages_open(pool_mg_s*, disk_mg_s*, uint32_t*, int);
+void mp_page_close(pool_mg_s*, disk_mg_s*, block_s*);
+void mp_pages_close(pool_mg_s*, disk_mg_s*, block_s**, int);
+block_s* mp_page_create(pool_mg_s*, disk_mg_s*);
+block_s** mp_pages_create(pool_mg_s*, disk_mg_s*, uint32_t*, int);
+void mp_page_delete(pool_mg_s*, disk_mg_s*, block_s*);
+void mp_pages_delete(pool_mg_s*, disk_mg_s*, block_s**, int);
 
 bool mp_require_page_rlock(pool_mg_s*, block_s*);
 void mp_release_page_rlock(pool_mg_s*, block_s*);
