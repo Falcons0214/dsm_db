@@ -62,8 +62,7 @@ typedef struct page_s page_s;
 struct page_s
 {
     uint16_t checksum;
-    uint32_t next_empty_page_id;
-    uint32_t next_page_id; // record same type page addr
+    uint32_t next_page_id;
     uint32_t page_id;
     uint16_t record_num;
     uint16_t data_width;
