@@ -16,7 +16,7 @@ typedef struct page_s page_s;
  * Page & Page Header size
  */
 #define PAGESIZE 4096 // !!
-#define PAGEHEADER 22
+#define PAGEHEADER 18
 #define PAGEHEADERSIZE 32
 #define PAGEHPADDINGSIZE (PAGEHEADERSIZE - PAGEHEADER)
 
@@ -46,11 +46,11 @@ typedef struct page_s page_s;
  *  -----------------------------------------------
  * | Page_id (4) | Next_page_id (4) | checksum (2) |
  *  -----------------------------------------------
- * | Next_empty_page_id (4) | record_number (2)    |
+ * | record_number (2) | Data_width (2) | Flags (2)|
  *  -----------------------------------------------
- * | Data_width (2) | Flags (2) | free_slot_offset-|
+ * | free_slot_offset (2) | Reserve (10)           |
  *  -----------------------------------------------
- * |-(2) | Reserve (10)                            |
+ * |                                               |
  *  -----------------------------------------------
  * | Data start ---->                              |
  *  -----------------------------------------------
@@ -102,9 +102,9 @@ inline void update_checksum(page_s*);
 inline bool examine_checksum(page_s*);
 
 // interface
-uint16_t p_entry_insert_by_value(page_s*, char*, uint16_t);
+uint16_t p_entry_insert(page_s*, char*, uint16_t);
 uint16_t p_entry_delete_by_index(page_s*, uint16_t);
-uint16_t p_entry_updata_by_value(page_s*, char*, char*, uint16_t);
+uint16_t p_entry_updata_by_index(page_s*, char*, uint16_t);
 inline bool p_entry_check_exist_by_index(page_s*, uint16_t);
 void page_init(page_s*, uint16_t, uint32_t, uint32_t);
 

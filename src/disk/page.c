@@ -98,7 +98,7 @@ bool p_entry_check_exist_by_index(page_s* page, uint16_t index)
     return ((*cur_slot) & SLOTSEATBBITMASK) ? false : true;
 }
 
-uint16_t p_entry_insert_by_value(page_s *page, char *item, uint16_t len)
+uint16_t p_entry_insert(page_s *page, char *item, uint16_t len)
 {
     if (page->free_slot_offset == PAGEISFULL)
         return P_ENTRY_PAGEFULL;
@@ -147,7 +147,7 @@ uint16_t p_entry_delete_by_index(page_s *page, uint16_t index)
     return P_ENTRY_ACCEPT;
 }
 
-uint16_t p_entry_updata_by_value(page_s *page, char *old, char *new, uint16_t index)
+uint16_t p_entry_updata_by_index(page_s *page, char *new, uint16_t index)
 {
     if (examine_checksum(page) == false)
         return P_ENTRY_CHECKSUMERROR;
@@ -163,9 +163,6 @@ uint16_t p_entry_updata_by_value(page_s *page, char *old, char *new, uint16_t in
     return P_ENTRY_ACCEPT;
 }
 
-/*
- * Basic "page" operation, only access from DB init.
- */
 void page_init(page_s *page, uint16_t width, uint32_t id, uint32_t next_id)
 {
     memset(page, 0, PAGESIZE);
