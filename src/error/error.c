@@ -19,6 +19,8 @@ void error_handler(unsigned short which, char *msg)
     case WRITE:
         fprintf(stderr, "<ERROR-MESSAGE: WRITE>\n");
         break;
+    case TPOOLOPEN:
+        fprintf(stderr, "<ERROR-MESSAGE: TPOOL-OPEN>\n");
     default:
         break;
     }

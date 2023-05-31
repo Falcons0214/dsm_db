@@ -11,13 +11,14 @@
 #define SEEK 0x0002
 #define READ 0x0003
 #define WRITE 0x0004
+#define TPOOLOPEN 0x0005
 
 
 #define PAGEDLERR 0x0000
 
 
 #define ECHECK_MALLOC(n, msg) \
-        if(n == NULL) error_handler(MALLOC, msg)
+        if(!n) error_handler(MALLOC, msg)
 
 #define ECHECK_OPEN(n, msg) \
         if(n == -1) error_handler(OPEN, msg)
@@ -29,6 +30,9 @@
 
 #define ECHECK_WRITE(n, msg) \
         if(n == -1) error_handler(WRITE, msg)
+
+#define ECHECK_TPOOLOPEN(n, msg) \
+        if(!n) error_handler(WRITE, msg)
 
 #define PAGEDIRLOADERR error_handler_nop(PAGEDLERR)        
 
