@@ -12,8 +12,12 @@ struct block_s
 {
     block_s *next_empty;
     rwlock_s rwlock;
+    uint32_t flags;
+    uint8_t priority;
     page_s *page;
 };
+
+#define BLOCKPRIINIT 0
 
 /* BUFFER-PAGE (Block): Flags
  * 
@@ -21,30 +25,30 @@ struct block_s
  * Dirty: check page is clear.
  * Occupy: check block is empty.
  */
-#define BPIN 0x01
-#define BDIRTY 0x02
-#define BOCCUPY 0x03
-#define BREAD 0x04
-#define BWRITE 0x05
+#define BPIN 0x00000001
+#define BDIRTY 0x00000002
+#define BREAD 0x00000003
+#define BWRITE 0x00000004
+#define BOCCUPY 0x00000005
 
 #define PINSET(f) ((*f) |= BPIN)
-#define PINCLEAR(f) ((*f) &= 0xfe)
+#define PINCLEAR(f) ((*f) &= 0xfffffffe)
 #define PINCHECK(f) (f &= BPIN) ? true : false
 
 #define DIRTYSET(f) ((*f) |= BDIRTY)
-#define DIRTYCLEAR(f) ((*f) &= 0xfd)
+#define DIRTYCLEAR(f) ((*f) &= 0xfffffffd)
 #define DIRTYCHECK(f) (f &= BDIRTY) ? true : false
 
-#define OCCUPYSET(f) ((*f) |= BOCCUPY)
-#define OCCUPYCLEAR(f) ((*f) &= 0xfc)
-#define OCCUPYCHECK(f) (f &= BOCCUPY) ? true : false
-
 #define READSET(f) ((*f) |= BREAD)
-#define READCLEAR(f) ((*f) &= 0xfb)
+#define READCLEAR(f) ((*f) &= 0xfffffffc)
 #define READCHECK(f) (f &= BREAD) ? true : false
 
 #define WRITESET(f) ((*f) |= BWRITE)
-#define WRITECLEAR(f) ((*f) &= 0xfa)
+#define WRITECLEAR(f) ((*f) &= 0xfffffffb)
 #define WRITECHECK(f) (f &= BWRITE) ? true : false
+
+#define OCCUPYSET(f) ((*f) |= BOCCUPY)
+#define OCCUPYCLEAR(f) ((*f) &= 0xfffffffa)
+#define OCCUPYCHECK(f) (f &= BOCCUPY) ? true : false
 
 #endif /* BLOCK_H */

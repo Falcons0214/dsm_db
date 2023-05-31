@@ -1,9 +1,8 @@
 #ifndef POOL_H
 #define POOL_H
 
-#include "../common/linklist.h"
-#include "../src/latch/rwlock.h"
 // #include "../common/threadpool.h"
+#include "../common/linklist.h"
 #include "./block.h"
 #include "./page.h"
 #include "./disk.h"
@@ -42,25 +41,39 @@ struct pool_mg_s
     block_s *block_header;
     char *pool;
     void *address_index_table[SUBPOOLS];
+
+    /*
+     * Page ID Manager:
+     * Use to manage page id, all need write back to disk.
+     * 
+     * page_counter: Record the current used maximum page id.
+     * ft_mutex: Protect struct.
+     */
+    uint32_t page_counter;
+    block_s *ft_block;
+    pthread_mutex_t ft_mutex;  
 };
  
 inline int get_block_spm_index(pool_mg_s*, block_s*);
-uint32_t page_swap_out(disk_mg_s*, block_s*);
-uint32_t page_bring_in(disk_mg_s*, uint32_t, block_s*);
+inline uint32_t page_swap_out(disk_mg_s*, block_s*);
+inline uint32_t page_bring_in(disk_mg_s*, uint32_t, block_s*);
 
+void load_info_from_disk(pool_mg_s*, disk_mg_s*);
+// uint32_t allocate_page_id(disk_mg_s*);
+// void free_page_id(disk_mg_s*, uint32_t);
 
 /*
  * Buffer Pool Interface
  */
 pool_mg_s* mp_pool_open();
-void mp_pool_close();
+void mp_pool_close(pool_mg_s*, disk_mg_s*);
 
 block_s* mp_page_open(pool_mg_s*, disk_mg_s*, uint32_t);
 block_s** mp_pages_open(pool_mg_s*, disk_mg_s*, uint32_t*, int);
 void mp_page_close(pool_mg_s*, disk_mg_s*, block_s*);
 void mp_pages_close(pool_mg_s*, disk_mg_s*, block_s**, int);
 block_s* mp_page_create(pool_mg_s*, disk_mg_s*);
-block_s** mp_pages_create(pool_mg_s*, disk_mg_s*, uint32_t*, int);
+block_s** mp_pages_create(pool_mg_s*, disk_mg_s*, int);
 void mp_page_delete(pool_mg_s*, disk_mg_s*, block_s*);
 void mp_pages_delete(pool_mg_s*, disk_mg_s*, block_s**, int);
 
