@@ -1,19 +1,18 @@
 #include <stdbool.h>
 #include <string.h>
 #include "../../include/page.h"
-#include <stdio.h>
 
 int get_max_entries(uint16_t width)
 {
     return (int)((PAGESIZE - PAGEHEADERSIZE) / (width + SLOTENTRYSIZE));
 }
 
-char *get_page_data_table_addr(page_s *page)
+char* get_page_data_table_addr(page_s *page)
 {
     return ((char*)page + PAGEHEADERSIZE);
 }
 
-char *get_page_data_entry_addr(page_s *page, uint16_t index)
+char* get_page_data_entry_addr(page_s *page, uint16_t index)
 {
     return (get_page_data_table_addr(page) + (index * page->data_width));
 }
@@ -23,17 +22,17 @@ bool is_page_full(page_s *page)
     return ((PAGESIZE - PAGEHEADERSIZE) < ((page->data_width + SLOTENTRYSIZE) * (page->record_num + 1))) ? true : false;
 }
 
-char *get_page_slotmap(page_s *page)
+char* get_page_slotmap(page_s *page)
 {
     return ((char*)page + PAGESIZE) - SLOTENTRYSIZE;
 }
 
-char *get_free_slot_addr(page_s *page)
+char* get_free_slot_addr(page_s *page)
 {
     return (get_page_slotmap(page) - (page->free_slot_offset * SLOTENTRYSIZE));
 }
 
-char *get_slot_addr(page_s *page, int index)
+char* get_slot_addr(page_s *page, int index)
 {
     return (get_page_slotmap(page) - (index * SLOTENTRYSIZE));
 }
@@ -161,6 +160,13 @@ uint16_t p_entry_updata_by_index(page_s *page, char *new, uint16_t index)
 
     update_checksum(page);
     return P_ENTRY_ACCEPT;
+}
+
+char* p_entry_read_by_index(page_s *page, uint16_t index)
+{
+    uint16_t *slot = (uint16_t*)get_slot_addr(page, index);
+    if (ISSLOTEMPTY(*slot)) return NULL;
+    return get_page_data_entry_addr(page, index);
 }
 
 void page_init(page_s *page, uint16_t width, uint32_t id, uint32_t next_id)

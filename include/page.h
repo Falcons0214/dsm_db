@@ -33,6 +33,8 @@ typedef struct page_s page_s;
 #define SLOTISFULL 0x4000
 #define SLOTISEMPTY 0xbfff
 
+#define ISSLOTEMPTY(f) (f &= SLOTSEATBBITMASK) ? false : true
+
 /*
  * Page: free_slot_offset
  */
@@ -87,12 +89,12 @@ struct page_s
 
 // for system
 inline int get_max_entries(uint16_t);
-inline char *get_page_data_table_addr(page_s*);
-inline char *get_page_data_entry_addr(page_s*, uint16_t);
+inline char* get_page_data_table_addr(page_s*);
+inline char* get_page_data_entry_addr(page_s*, uint16_t);
 inline bool is_page_full(page_s*);
-inline char *get_page_slotmap(page_s*);
-inline char *get_free_slot_addr(page_s*);
-inline char *get_slot_addr(page_s*, int);
+inline char* get_page_slotmap(page_s*);
+inline char* get_free_slot_addr(page_s*);
+inline char* get_slot_addr(page_s*, int);
 inline void set_slot_null(uint16_t*);
 inline void set_slot_seat(uint16_t*);
 inline void set_slot_unseat(uint16_t*);
@@ -100,12 +102,13 @@ inline uint16_t get_slot_value(uint16_t);
 inline uint16_t calculate_checksum(page_s*);
 inline void update_checksum(page_s*);
 inline bool examine_checksum(page_s*);
+inline bool p_entry_check_exist_by_index(page_s*, uint16_t);
 
 // interface
 uint16_t p_entry_insert(page_s*, char*, uint16_t);
 uint16_t p_entry_delete_by_index(page_s*, uint16_t);
 uint16_t p_entry_updata_by_index(page_s*, char*, uint16_t);
-inline bool p_entry_check_exist_by_index(page_s*, uint16_t);
+char* p_entry_read_by_index(page_s*, uint16_t);
 void page_init(page_s*, uint16_t, uint32_t, uint32_t);
 
 #endif /* PAGE_H */
