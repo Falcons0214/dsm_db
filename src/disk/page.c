@@ -146,7 +146,7 @@ uint16_t p_entry_delete_by_index(page_s *page, uint16_t index)
     return P_ENTRY_ACCEPT;
 }
 
-uint16_t p_entry_updata_by_index(page_s *page, char *new, uint16_t index)
+uint16_t p_entry_update_by_index(page_s *page, char *new, uint16_t index)
 {
     if (examine_checksum(page) == false)
         return P_ENTRY_CHECKSUMERROR;
@@ -167,6 +167,11 @@ char* p_entry_read_by_index(page_s *page, uint16_t index)
     uint16_t *slot = (uint16_t*)get_slot_addr(page, index);
     if (ISSLOTEMPTY(*slot)) return NULL;
     return get_page_data_entry_addr(page, index);
+}
+
+bool p_is_page_full(page_s *page)
+{
+    return is_page_full(page);
 }
 
 void page_init(page_s *page, uint16_t width, uint32_t id, uint32_t next_id)
