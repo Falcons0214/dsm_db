@@ -10,7 +10,7 @@ int get_block_spm_index(pool_mg_s *pm, block_s *block)
     uint64_t x = (uint64_t)block, y;
     for (int i = 1; i < SUBPOOLS; i ++) {
         y = (uint64_t)pm->address_index_table[i];
-        if (x > y) return i;
+        if (x >= y) return i;
     }
     return -1;
 }
@@ -42,6 +42,7 @@ block_s* spm_allocate_block(sub_pool_s *spm)
     block = spm->empty_block;
     spm->empty_block = block->next_empty;
     pthread_mutex_unlock(&spm->sp_block_mutex);
+    OCCUPYSET(&block->flags);
     return block;
 }
 
@@ -58,6 +59,7 @@ block_s** spm_allocate_blocks(sub_pool_s *spm, int needs)
     for (int i = 0; i < needs; i ++) {
         blocks[i] = spm->empty_block;
         spm->empty_block = blocks[i]->next_empty;
+        OCCUPYSET(&blocks[i]->flags);
     }
     pthread_mutex_unlock(&spm->sp_block_mutex);
     return blocks;
@@ -65,6 +67,7 @@ block_s** spm_allocate_blocks(sub_pool_s *spm, int needs)
 
 void spm_free_block(sub_pool_s *spm, block_s *block)
 {
+    OCCUPYCLEAR(&block->flags);
     pthread_mutex_lock(&spm->sp_block_mutex);
     spm->used_blocks --;
     block->next_empty = spm->empty_block;
@@ -79,6 +82,7 @@ void spm_free_blocks(sub_pool_s *spm, block_s **blocks, int n)
     for (int i = 0; i < n; i ++) {
         blocks[i]->next_empty = spm->empty_block;
         spm->empty_block = blocks[i];
+        OCCUPYCLEAR(&blocks[i]->flags);
     }
     pthread_mutex_unlock(&spm->sp_block_mutex);
 }
@@ -90,11 +94,8 @@ void spm_free_blocks(sub_pool_s *spm, block_s **blocks, int n)
  */
 void load_info_from_disk(pool_mg_s *pm, disk_mg_s *dm)
 {
-    // pm->ft_blocks = spm_allocate_blocks(&pm->sub_pool[SYSTEMSUBPOOLINDEX], FTBLOCKSSZIE);
-    // if (!pm->ft_blocks) {}
-
-    // page_bring_in(dm, dm->free_table_id, pm->ft_blocks[FTTABLEINDEX]);
-
+    pm->ft_block = spm_allocate_block(&pm->sub_pool[SYSTEMSUBPOOLINDEX]);
+    page_bring_in(dm, dm->free_table_id, pm->ft_block);
 }
 
 void allocate_pages_id(pool_mg_s *pm, disk_mg_s *dm, uint32_t *to, int n)
@@ -103,11 +104,12 @@ void allocate_pages_id(pool_mg_s *pm, disk_mg_s *dm, uint32_t *to, int n)
     pthread_mutex_lock(&pm->ft_mutex);
     for (int i = 0; i < n; i ++) {
         if (page->record_num) {
-            to[i] = p_entry_read_by_index(page, page->record_num);
+            to[i] = *((uint32_t*)p_entry_read_by_index(page, page->record_num));
             p_entry_delete_by_index(page, page->record_num);
             page->record_num --;
         }else{
-            uint32_t prev_id = p_entry_read_by_index(page, 0);
+            char *tmp = p_entry_read_by_index(page, 0);
+            uint32_t prev_id = (tmp) ? *((uint32_t*)tmp) : PAGEIDNULL;
             if (prev_id == PAGEIDNULL)
                 to[i] = pm->page_counter ++;
             else{
@@ -126,11 +128,11 @@ void free_pages_id(pool_mg_s *pm, disk_mg_s *dm, uint32_t *from, int n)
     uint32_t prev_id;
     pthread_mutex_lock(&pm->ft_mutex);
     for (int i = 0; i < n; i ++) {
-        if (p_entry_insert(page, &from[i], sizeof(uint32_t)) == P_ENTRY_PAGEFULL) {
+        if (p_entry_insert(page, ((char*)&from[i]), sizeof(uint32_t)) == P_ENTRY_PAGEFULL) {
             prev_id = page->page_id;
             page_swap_out(dm, pm->ft_block);
             page_init(page, sizeof(uint32_t), from[i], PAGEIDNULL);
-            p_entry_update_by_index(page, &prev_id, 0);
+            p_entry_update_by_index(page, ((char*)&prev_id), 0);
         }
     }
     pthread_mutex_unlock(&pm->ft_mutex);
@@ -202,7 +204,7 @@ pool_mg_s* mp_pool_open()
 
 void mp_pool_close(pool_mg_s *pm, disk_mg_s *dm)
 {
-    
+
 }
 
 /*
@@ -233,7 +235,7 @@ block_s** mp_pages_create(pool_mg_s *pm, disk_mg_s *dm, int n)
     uint32_t pages_id[n];
     allocate_pages_id(pm, dm, pages_id, n);
     for (int i = 0; i < n; i ++)
-        page_init(blocks[i]->page, 0, pages_id[i], 0);
+        page_init(blocks[i]->page, 4, pages_id[i], 0);
     return blocks;
 }
 
@@ -264,21 +266,21 @@ block_s* mp_page_open(pool_mg_s *pm, disk_mg_s *dm, uint32_t page_id)
     }
     if (!block) return NULL;
     return (page_bring_in(dm, page_id, block) == PAGELOADFAIL) ? NULL : block;
-}
+} 
 
 block_s** mp_pages_open(pool_mg_s *pm, disk_mg_s *dm, uint32_t *pages_id, int needs)
 {
     block_s **blocks;
-    int tmp;
+    int sp_index;
     for (int i = 1; i < SUBPOOLS; i ++) {
         blocks = spm_allocate_blocks(&pm->sub_pool[i], needs);
-        tmp = i;
+        sp_index = i;
         if (blocks) break;
     }
     if (!blocks) return NULL;
     for (int i = 0; i < needs; i ++) {
         if(page_bring_in(dm, pages_id[i], blocks[i]) == PAGELOADFAIL) {
-            spm_free_blocks(&pm->sub_pool[tmp], blocks, needs);
+            spm_free_blocks(&pm->sub_pool[sp_index], blocks, needs);
             free(blocks);
             return NULL;
         }

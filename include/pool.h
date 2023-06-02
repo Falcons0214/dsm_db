@@ -51,17 +51,21 @@ struct pool_mg_s
      */
     uint32_t page_counter;
     block_s *ft_block;
-    pthread_mutex_t ft_mutex;  
+    pthread_mutex_t ft_mutex;
 };
- 
+
 inline int get_block_spm_index(pool_mg_s*, block_s*);
-inline uint32_t page_swap_out(disk_mg_s*, block_s*);
 inline uint32_t page_bring_in(disk_mg_s*, uint32_t, block_s*);
+inline uint32_t page_swap_out(disk_mg_s*, block_s*);
 
 void load_info_from_disk(pool_mg_s*, disk_mg_s*);
 // uint32_t allocate_page_id(disk_mg_s*);
 // void free_page_id(disk_mg_s*, uint32_t);
 
+block_s* spm_allocate_block(sub_pool_s*);
+block_s** spm_allocate_blocks(sub_pool_s*, int);
+void spm_free_block(sub_pool_s*, block_s*);
+void spm_free_blocks(sub_pool_s*, block_s**, int);
 /*
  * Buffer Pool Interface
  */
