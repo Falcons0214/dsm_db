@@ -33,7 +33,7 @@ typedef struct page_s page_s;
 #define SLOTISFULL 0x4000
 #define SLOTISEMPTY 0xbfff
 
-#define ISSLOTEMPTY(f) (f &= SLOTSEATBBITMASK) ? false : true
+#define ISSLOTEMPTY(f) (f & SLOTSEATBBITMASK) ? false : true
 
 /*
  * Page: free_slot_offset

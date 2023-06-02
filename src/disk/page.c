@@ -148,17 +148,10 @@ uint16_t p_entry_delete_by_index(page_s *page, uint16_t index)
 
 uint16_t p_entry_update_by_index(page_s *page, char *new, uint16_t index)
 {
-    if (examine_checksum(page) == false)
-        return P_ENTRY_CHECKSUMERROR;
-
     if (p_entry_check_exist_by_index(page, index))
         return P_ENTRY_ITEMNOTFOUND;
-
     char *data_addr = get_page_data_entry_addr(page, index);
-
     memcpy(data_addr, new, page->data_width);
-
-    update_checksum(page);
     return P_ENTRY_ACCEPT;
 }
 
