@@ -21,6 +21,8 @@ void error_handler(unsigned short which, char *msg)
         break;
     case TPOOLOPEN:
         fprintf(stderr, "<ERROR-MESSAGE: TPOOL-OPEN>\n");
+    case LOADINFO:
+        fprintf(stderr, "<ERROR-MESSAGE: MP-LOAD-DB-INFO>\n");
     default:
         break;
     }
