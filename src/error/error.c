@@ -1,6 +1,6 @@
 #include "./error.h"
 
-void error_handler(unsigned short which, char *msg)
+void error_handler(unsigned short which, char *msg, char *msg2)
 {
     switch (which)
     {
@@ -27,7 +27,10 @@ void error_handler(unsigned short which, char *msg)
         break;
     }
 
-    fprintf(stderr, "From: %s\nWhy: %s\n", (msg) ? msg : "system" , strerror(errno));
+    if (msg2)
+        fprintf(stderr, "From: %s\nWhy: %s\n", msg, msg2);
+    else
+        fprintf(stderr, "From: %s\nWhy: %s\n", (msg) ? msg : "system" , strerror(errno));
     exit(-1);
 }
 
