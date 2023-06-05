@@ -16,19 +16,17 @@ POOL = ${SRC}/pool
 %.o: %.c
 	$(CC) -o $@ -c $< $(CFLAGS)
 
-test_template:
-	${CC} -o ${TEST}/$@ $^ ${CFLAGS}
-
-
 # below for test
+test_template = ${CC} -o ${TEST}/$@ $^ ${CFLAGS}
 
+	
 t1: ${COMMON}/linklist.o ${ERROR}/error.o ${TEST}/t1.c
 	${test_template}
 
 pagetest: ${DISK}/page.o ${TEST}/pagetest.c
 	${test_template}
 
-pooltest: ${POOL}/pool.o ${DISK}/disk.o ${ERROR}/error.o ${TEST}/pooltest.c
+pooltest: ${ERROR}/error.o ${LATCH}/rwlock.o ${DISK}/page.o ${DISK}/disk.o ${POOL}/pool.o ${TEST}/pooltest.c
 	${test_template}
 
 tpooltest: ${COMMON}/threadpool.o ${TEST}/tpooltest.c
@@ -39,4 +37,8 @@ rqtest: ${COMMON}/rqueue.o ${TEST}/rqtest.c
 
 lllqtest: ${COMMON}/lllq.o ${TEST}/lllqtest.c
 	${test_template}
+
+pairtest: ${COMMON}/pair.o ${TEST}/pairtest.c
+	${test_template}
+
 
