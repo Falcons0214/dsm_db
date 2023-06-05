@@ -62,7 +62,7 @@ uint16_t calculate_checksum(page_s *page)
     uint16_t v = 0;
     uint16_t *cur = (uint16_t*)page;
     int loop = PAGESIZE / CHECKSUMSIZE;
-
+    
     cur += 1; // skip checksum
     for (int i = 1; i < loop; i ++, cur ++)
         v ^= *cur;
@@ -148,11 +148,22 @@ uint16_t p_entry_delete_by_index(page_s *page, uint16_t index)
 
 uint16_t p_entry_update_by_index(page_s *page, char *new, uint16_t index)
 {
+    if (examine_checksum(page) == false)
+        return P_ENTRY_CHECKSUMERROR;
     if (p_entry_check_exist_by_index(page, index))
         return P_ENTRY_ITEMNOTFOUND;
     char *data_addr = get_page_data_entry_addr(page, index);
     memcpy(data_addr, new, page->data_width);
+    update_checksum(page);
     return P_ENTRY_ACCEPT;
+}
+
+uint16_t p_entry_set_nextpid(page_s *page, uint32_t next_id)
+{
+    if (examine_checksum(page) == false)
+        return P_ENTRY_CHECKSUMERROR;
+    page->next_page_id = next_id;
+    update_checksum(page);
 }
 
 char* p_entry_read_by_index(page_s *page, uint16_t index)

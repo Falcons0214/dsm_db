@@ -108,6 +108,7 @@ inline bool p_entry_check_exist_by_index(page_s*, uint16_t);
 uint16_t p_entry_insert(page_s*, char*, uint16_t);
 uint16_t p_entry_delete_by_index(page_s*, uint16_t);
 uint16_t p_entry_update_by_index(page_s*, char*, uint16_t);
+uint16_t p_entry_set_nextpid(page_s*, uint32_t);
 char* p_entry_read_by_index(page_s*, uint16_t);
 bool p_is_page_full(page_s*);
 void page_init(page_s*, uint16_t, uint32_t, uint32_t);
