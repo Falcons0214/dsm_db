@@ -6,7 +6,7 @@
 #include <stdbool.h>
 #include "./page.h"
 
-#define DBFILEPATH "/home/joseph/project/db_1/tmp"
+#define DBFILEPATH "/home/joseph/project/db_1/tmp/db.dump"
 // #define DBFILEPATH "/home/joseph/project/db_1/dbfile"
 
 typedef struct disk_mg_s disk_mg_s;

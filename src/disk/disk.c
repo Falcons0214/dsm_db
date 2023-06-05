@@ -43,7 +43,7 @@ uint32_t dk_write_page_by_pid(disk_mg_s *dm, uint32_t page_id, void *from)
     ssize_t writen = write(dm->db_fd, (char*)from, PAGESIZE);
     if (writen != PAGESIZE)
         return DKWRITEINCOMP;
-    printf("Writen: %d\n", writen);
+    printf("Writen:  %zd\n", writen);
     return DKWRITEACCEPT;
 }
 
@@ -130,6 +130,7 @@ bool db_open(disk_mg_s *dm)
 void db_close(disk_mg_s *dm)
 {
     close(dm->db_fd);
+    free(dm);
 }
 
 disk_mg_s* dk_dm_open(bool *flag)
