@@ -38,7 +38,7 @@ block_s* spm_allocate_block(sub_pool_s *spm)
         pthread_mutex_unlock(&spm->sp_block_mutex);
         return NULL;
     }
-    spm->used_blocks --;
+    spm->used_blocks ++;
     block = spm->empty_block;
     spm->empty_block = block->next_empty;
     pthread_mutex_unlock(&spm->sp_block_mutex);
@@ -55,7 +55,7 @@ block_s** spm_allocate_blocks(sub_pool_s *spm, int needs)
         free(blocks);
         return NULL;
     }
-    spm->used_blocks -= needs;
+    spm->used_blocks += needs;
     for (int i = 0; i < needs; i ++) {
         blocks[i] = spm->empty_block;
         spm->empty_block = blocks[i]->next_empty;
@@ -91,23 +91,63 @@ void spm_free_blocks(sub_pool_s *spm, block_s **blocks, int n)
  * System
  * 
  * Bring DB info, Page dir, Free_id table, in system pool.
+ * 
+ * TESTING ...
  */
-void load_info_from_disk(pool_mg_s *pm, disk_mg_s *dm)
+void hook_info(pool_mg_s *pm)
 {
-    pm->ft_block = spm_allocate_block(&pm->sub_pool[SYSTEMSUBPOOLINDEX]);
-    page_bring_in(dm, dm->free_table_id, pm->ft_block);
+    sub_pool_s *sys_pool = &pm->sub_pool[SYSTEMSUBPOOLINDEX];
+    pm->ft_block = &sys_pool->buf_list[FPIDTABLEINDEX];
+
+    uint32_t *tmp = (uint32_t*)p_entry_read_by_index(sys_pool->buf_list[DBINFOINDEX].page, 0);
+    pm->page_counter = *tmp;
 }
 
-void allocate_pages_id(pool_mg_s *pm, disk_mg_s *dm, uint32_t *to, int n)
+void load_info_from_disk(pool_mg_s *pm, disk_mg_s *dm)
+{
+    block_s **blocks = spm_allocate_blocks(&pm->sub_pool[SYSTEMSUBPOOLINDEX], 3);
+
+    for (int i = 0; i < 3; i ++) {
+        if (i == 2) {
+            uint32_t free_top = *((uint32_t*)p_entry_read_by_index(blocks[0]->page, 1));
+            if (page_bring_in(dm, free_top, blocks[i]) == PAGELOADFAIL)
+                ECHECK_LOADINFO(FILELOCATION, "System page load fail.\n");
+        }else{
+            if (page_bring_in(dm, i, blocks[i]) == PAGELOADFAIL)
+                ECHECK_LOADINFO(FILELOCATION, "System page load fail.\n");
+        }
+    }
+    
+    hook_info(pm);
+    free(blocks); // These pages didn't swap out.
+}
+
+void init_db_info(pool_mg_s *pm)
+{
+    block_s **blocks = spm_allocate_blocks(&pm->sub_pool[SYSTEMSUBPOOLINDEX], 3);
+    uint32_t start_index = 3;
+    uint32_t free_top = 2;
+    uint32_t null_index = PAGEIDNULL;
+
+    for (int i = 0; i < 3; i ++) {
+        page_init(blocks[i]->page, 4, i, PAGEIDNULL);
+        DIRTYSET(&blocks[i]->flags);
+    }
+
+    p_entry_insert(blocks[DBINFOINDEX]->page, (char*)&start_index, sizeof(uint32_t));
+    p_entry_insert(blocks[DBINFOINDEX]->page, (char*)&free_top, sizeof(uint32_t));
+    p_entry_insert(blocks[FPIDTABLEINDEX]->page, (char*)&null_index, sizeof(uint32_t));
+
+    hook_info(pm);
+    free(blocks);
+}
+
+void allocate_pages_id(pool_mg_s *pm, disk_mg_s *dm, uint32_t *to, int n) // test pass
 {
     page_s *page = pm->ft_block->page;
     pthread_mutex_lock(&pm->ft_mutex);
     for (int i = 0; i < n; i ++) {
-        if (page->record_num) {
-            to[i] = *((uint32_t*)p_entry_read_by_index(page, page->record_num));
-            p_entry_delete_by_index(page, page->record_num);
-            page->record_num --;
-        }else{
+        if (page->record_num == 1) {
             char *tmp = p_entry_read_by_index(page, 0);
             uint32_t prev_id = (tmp) ? *((uint32_t*)tmp) : PAGEIDNULL;
             if (prev_id == PAGEIDNULL)
@@ -117,12 +157,16 @@ void allocate_pages_id(pool_mg_s *pm, disk_mg_s *dm, uint32_t *to, int n)
                 page_bring_in(dm, prev_id, pm->ft_block);
                 page = pm->ft_block->page;
             }
+        }else{ 
+            uint16_t stack_top = page->record_num - 1;
+            to[i] = *((uint32_t*)p_entry_read_by_index(page, stack_top));
+            p_entry_delete_by_index(page, stack_top);
         }
     }
     pthread_mutex_unlock(&pm->ft_mutex);
 }
 
-void free_pages_id(pool_mg_s *pm, disk_mg_s *dm, uint32_t *from, int n)
+void free_pages_id(pool_mg_s *pm, disk_mg_s *dm, uint32_t *from, int n) // test pass
 {
     page_s *page = pm->ft_block->page;
     uint32_t prev_id;
@@ -130,9 +174,10 @@ void free_pages_id(pool_mg_s *pm, disk_mg_s *dm, uint32_t *from, int n)
     for (int i = 0; i < n; i ++) {
         if (p_entry_insert(page, ((char*)&from[i]), sizeof(uint32_t)) == P_ENTRY_PAGEFULL) {
             prev_id = page->page_id;
+            p_entry_set_nextpid(page, from[i]);
             page_swap_out(dm, pm->ft_block);
             page_init(page, sizeof(uint32_t), from[i], PAGEIDNULL);
-            p_entry_update_by_index(page, ((char*)&prev_id), 0);
+            p_entry_insert(page, ((char*)&prev_id), sizeof(uint32_t));
         }
     }
     pthread_mutex_unlock(&pm->ft_mutex);
@@ -166,7 +211,7 @@ void* get_space_alignment_by(uint32_t value, uint32_t size)
     return buffer;
 }
 
-pool_mg_s* mp_pool_open()
+pool_mg_s* mp_pool_open(bool init, disk_mg_s *dm)
 {
     pool_mg_s *pool = (pool_mg_s*)malloc(sizeof(pool_mg_s));
     ECHECK_MALLOC(pool, FILELOCATION);
@@ -199,12 +244,30 @@ pool_mg_s* mp_pool_open()
         rwlock_init(&(tmp_b->rwlock));
     }
 
+    if (init)
+        init_db_info(pool);
+    else
+        load_info_from_disk(pool, dm);
     return pool;
 }
 
+// For testing
 void mp_pool_close(pool_mg_s *pm, disk_mg_s *dm)
 {
+    sub_pool_s *sys_pool;
 
+    DIRTYSET(&(pm->block_header[DBINFOINDEX].flags));
+    p_entry_update_by_index(pm->block_header[DBINFOINDEX].page, (char*)&pm->page_counter, 0);
+    p_entry_update_by_index(pm->block_header[DBINFOINDEX].page, (char*)&pm->ft_block->page->page_id, 1);
+
+    for (int i = 0; i < SUBPOOLS; i ++) {
+        sys_pool = &pm->sub_pool[i];
+        for (int h = 0; h < SUBPOOLBLOCKS; h ++)
+            page_swap_out(dm, &sys_pool->buf_list[h]);
+    }
+    free(pm->block_header);
+    free(pm->pool);
+    free(pm);
 }
 
 /*

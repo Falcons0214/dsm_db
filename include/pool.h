@@ -19,6 +19,10 @@ typedef struct sub_pool_s sub_pool_s;
 #define SUBPOOLBLOCKS (PAGEBLOCKS / SUBPOOLS)
 #define SYSTEMSUBPOOLINDEX 0
 
+#define DBINFOINDEX 0
+#define PAGEDIRINDEX 1
+#define FPIDTABLEINDEX 2
+
 #define PAGELOADACCP UINT32_MAX - 0
 #define PAGELOADFAIL UINT32_MAX - 1
 #define PAGESWAPACCP UINT32_MAX - 2
@@ -54,13 +58,14 @@ struct pool_mg_s
     pthread_mutex_t ft_mutex;
 };
 
+inline void hook_info(pool_mg_s*);
 inline int get_block_spm_index(pool_mg_s*, block_s*);
 inline uint32_t page_bring_in(disk_mg_s*, uint32_t, block_s*);
 inline uint32_t page_swap_out(disk_mg_s*, block_s*);
 
 void load_info_from_disk(pool_mg_s*, disk_mg_s*);
-// uint32_t allocate_page_id(disk_mg_s*);
-// void free_page_id(disk_mg_s*, uint32_t);
+void allocate_pages_id(pool_mg_s*, disk_mg_s*, uint32_t*, int);
+void free_pages_id(pool_mg_s*, disk_mg_s*, uint32_t*, int);
 
 block_s* spm_allocate_block(sub_pool_s*);
 block_s** spm_allocate_blocks(sub_pool_s*, int);
@@ -69,7 +74,7 @@ void spm_free_blocks(sub_pool_s*, block_s**, int);
 /*
  * Buffer Pool Interface
  */
-pool_mg_s* mp_pool_open();
+pool_mg_s* mp_pool_open(bool, disk_mg_s*);
 void mp_pool_close(pool_mg_s*, disk_mg_s*);
 
 block_s* mp_page_open(pool_mg_s*, disk_mg_s*, uint32_t);
