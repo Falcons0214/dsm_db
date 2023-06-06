@@ -164,6 +164,18 @@ uint16_t p_entry_set_nextpid(page_s *page, uint32_t next_id)
         return P_ENTRY_CHECKSUMERROR;
     page->next_page_id = next_id;
     update_checksum(page);
+    return P_ENTRY_ACCEPT;
+}
+
+uint16_t p_entry_set_width(page_s *page, uint16_t width)
+{
+    if (examine_checksum(page) == false)
+        return P_ENTRY_CHECKSUMERROR;
+    if (width > ENTRYLIMIT)
+        return P_ENTRY_ACCEPT;
+    page->data_width = width;
+    update_checksum(page);
+    return P_ENTRY_ACCEPT;
 }
 
 char* p_entry_read_by_index(page_s *page, uint16_t index)

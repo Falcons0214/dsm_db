@@ -22,12 +22,10 @@ uint32_t dk_read_page_by_pid(disk_mg_s *dm, uint32_t page_id, void *to)
 
     if (result_offset == -1)
         ECHECK_SEEK(FILELOCATION);
-    
+
     ssize_t readn = read(dm->db_fd, (char*)to, PAGESIZE);
-    if (readn != PAGESIZE)
-        return DKREADINCOMP;
-    return DKREADACCEPT;
-} 
+    return (readn != PAGESIZE) ? DKREADINCOMP : DKREADACCEPT;
+}
 
 //uncheck, may accessed by multi thread
 uint32_t dk_write_page_by_pid(disk_mg_s *dm, uint32_t page_id, void *from)
@@ -41,10 +39,8 @@ uint32_t dk_write_page_by_pid(disk_mg_s *dm, uint32_t page_id, void *from)
         ECHECK_SEEK(FILELOCATION);
     
     ssize_t writen = write(dm->db_fd, (char*)from, PAGESIZE);
-    if (writen != PAGESIZE)
-        return DKWRITEINCOMP;
     printf("Writen:  %zd\n", writen);
-    return DKWRITEACCEPT;
+    return (writen != PAGESIZE) ? DKWRITEINCOMP : DKWRITEACCEPT;
 }
 
 uint32_t dk_read_pages_by_pid(disk_mg_s *dm, uint32_t *pages_id, char **pages, int n)

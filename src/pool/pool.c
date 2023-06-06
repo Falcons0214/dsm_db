@@ -8,7 +8,7 @@
 int get_block_spm_index(pool_mg_s *pm, block_s *block)
 {
     uint64_t x = (uint64_t)block, y;
-    for (int i = 1; i < SUBPOOLS; i ++) {
+    for (int i = SUBPOOLS - 1; i >= 0; i --) {
         y = (uint64_t)pm->address_index_table[i];
         if (x >= y) return i;
     }
@@ -283,7 +283,7 @@ block_s* mp_page_create(pool_mg_s *pm, disk_mg_s *dm)
     if (!block) return NULL;
     uint32_t page_id;
     allocate_pages_id(pm, dm, &page_id, 1);
-    page_init(block->page, 0, page_id, 0);
+    page_init(block->page, 4, page_id, PAGEIDNULL);
     return block;
 }
 
@@ -298,7 +298,7 @@ block_s** mp_pages_create(pool_mg_s *pm, disk_mg_s *dm, int n)
     uint32_t pages_id[n];
     allocate_pages_id(pm, dm, pages_id, n);
     for (int i = 0; i < n; i ++)
-        page_init(blocks[i]->page, 4, pages_id[i], 0);
+        page_init(blocks[i]->page, 4, pages_id[i], PAGEIDNULL);
     return blocks;
 }
 
@@ -306,10 +306,11 @@ void mp_page_delete(pool_mg_s *pm, disk_mg_s *dm, block_s *block)
 {
     int spm_index = get_block_spm_index(pm, block);
     spm_free_block(&pm->sub_pool[spm_index], block);
+    printf("Why ? %d\n", block->page->page_id);
     free_pages_id(pm, dm, &(block->page->page_id), 1);
 }
 
-void mp_pages_delete(pool_mg_s *pm, disk_mg_s *dm, block_s **blocks, int n)
+void mp_pages_delete(pool_mg_s *pm, disk_mg_s *dm, block_s **blocks, int n) // only can delete those page in the same pool.
 {
     int spm_index = get_block_spm_index(pm, blocks[0]);
     uint32_t pages_id[n];
@@ -328,8 +329,13 @@ block_s* mp_page_open(pool_mg_s *pm, disk_mg_s *dm, uint32_t page_id)
         if (block) break;
     }
     if (!block) return NULL;
-    return (page_bring_in(dm, page_id, block) == PAGELOADFAIL) ? NULL : block;
-} 
+    if (page_bring_in(dm, page_id, block) == PAGELOADFAIL) {
+        int spm_index = get_block_spm_index(pm, block);
+        spm_free_block(&pm->sub_pool[spm_index], block);
+        return NULL;
+    }
+    return block;
+}
 
 block_s** mp_pages_open(pool_mg_s *pm, disk_mg_s *dm, uint32_t *pages_id, int needs)
 {
