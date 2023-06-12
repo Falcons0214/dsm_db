@@ -95,7 +95,7 @@ list_node_s* list_pop_tail(list_s *l)
     return tmp;
 }
 
-list_node_s* list_remove(list_s *l, uint32_t pos)
+list_node_s* list_remove_by_pos(list_s *l, uint32_t pos)
 {
     if (pos > l->node_count || pos <= 0) {
         perror("Node dosen't exist !\n");
@@ -119,4 +119,20 @@ list_node_s* list_remove(list_s *l, uint32_t pos)
     tmp->prev = NULL;
     tmp->next = NULL;
     return tmp;
+}
+
+void list_remove_by_addr(list_s *l, list_node_s *n)
+{
+    if (n == l->head && n == l->tail) {
+        l->head = l->tail = NULL;
+    }else if (n == l->head) {
+        l->head = l->head->next;
+        l->head->prev = NULL;
+    }else if (n == l->tail) {
+        l->tail = l->tail->prev;
+        l->tail->next = NULL;
+    }else{
+        n->prev->next = n->next;
+        n->next->prev = n->prev;
+    }
 }
