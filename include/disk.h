@@ -9,14 +9,14 @@
 #define DBFILEPATH "/home/joseph/project/db_1/tmp/db.dump"
 // #define DBFILEPATH "/home/joseph/project/db_1/dbfile"
 
-typedef struct disk_mg_s disk_mg_s;
+typedef struct disk_mg disk_mg_s;
 
 #define DKREADACCEPT 0
 #define DKWRITEACCEPT 1
 #define DKREADINCOMP 2
 #define DKWRITEINCOMP 3
 
-struct disk_mg_s
+struct disk_mg
 {
     int db_fd;
     int log_fd;

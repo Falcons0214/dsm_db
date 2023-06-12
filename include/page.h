@@ -5,7 +5,7 @@
 #include <stdbool.h>
 #include <sys/types.h>
 
-typedef struct page_s page_s;
+typedef struct page page_s;
 
 /*
  * Page Id 
@@ -62,7 +62,7 @@ typedef struct page_s page_s;
  * |                         <---- Data_slot_table |
  *  -----------------------------------------------
  */
-struct page_s
+struct page
 {
     uint16_t checksum;
     uint32_t next_page_id;

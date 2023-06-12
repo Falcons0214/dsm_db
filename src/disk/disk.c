@@ -45,12 +45,12 @@ uint32_t dk_write_page_by_pid(disk_mg_s *dm, uint32_t page_id, void *from)
 
 uint32_t dk_read_pages_by_pid(disk_mg_s *dm, uint32_t *pages_id, char **pages, int n)
 {
-    
+    return DKREADINCOMP;
 }
 
 uint32_t dk_write_pages_by_pid(disk_mg_s *dm, uint32_t *pages_id, char **pages, int n)
 {
-
+    return DKWRITEINCOMP;
 }
 
 uint32_t dk_read_continues_pages(disk_mg_s *dm, uint32_t pid_start, uint32_t pid_end, void *to)
