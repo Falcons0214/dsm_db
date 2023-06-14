@@ -17,13 +17,18 @@ uint32_t dk_read_page_by_pid(disk_mg_s *dm, uint32_t page_id, void *to)
 {
     off_t result_offset;
     off_t read_start = PAGESIZE * page_id;
+    ssize_t readn;
 
+RELOAD:
     result_offset = lseek(dm->db_fd, read_start, SEEK_SET);
 
     if (result_offset == -1)
         ECHECK_SEEK(FILELOCATION);
 
-    ssize_t readn = read(dm->db_fd, (char*)to, PAGESIZE);
+    readn = read(dm->db_fd, (char*)to, PAGESIZE);
+    if (((page_s*)to)->page_id != page_id)
+        goto RELOAD; // prevent unpredictable result
+
     return (readn != PAGESIZE) ? DKREADINCOMP : DKREADACCEPT;
 }
 
@@ -39,7 +44,7 @@ uint32_t dk_write_page_by_pid(disk_mg_s *dm, uint32_t page_id, void *from)
         ECHECK_SEEK(FILELOCATION);
     
     ssize_t writen = write(dm->db_fd, (char*)from, PAGESIZE);
-    printf("Writen:  %zd\n", writen);
+    printf("Writen:  %zd, Page id: %d\n", writen, page_id);
     return (writen != PAGESIZE) ? DKWRITEINCOMP : DKWRITEACCEPT;
 }
 
