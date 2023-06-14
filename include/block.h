@@ -1,4 +1,4 @@
-#ifndef BLOCK_H
+ #ifndef BLOCK_H
 #define BLOCK_H
 
 #include "./page.h"
@@ -6,11 +6,13 @@
 
 #include <stdint.h>
 
-typedef struct block_s block_s;
+typedef struct block block_s;
 
-struct block_s
+struct block
 {
     block_s *next_empty;
+
+    char state;
     rwlock_s rwlock;
     uint32_t flags;
     uint8_t priority;
@@ -18,6 +20,12 @@ struct block_s
 };
 
 #define BLOCKPRIINIT 0
+
+#define PAGEINPOOL 0
+#define PAGENOTINPOOL 1
+#define PAGELOADING 2
+#define PAGESWAPPING 3
+#define PAGEDESTORY 4
 
 /* BUFFER-PAGE (Block): Flags
  * 
