@@ -1,5 +1,6 @@
 #include "../../include/disk.h"
 #include "../error/error.h"
+#include <pthread.h>
 #include <sys/types.h>
 #include <fcntl.h>
 #include <stdio.h>
@@ -19,16 +20,17 @@ uint32_t dk_read_page_by_pid(disk_mg_s *dm, uint32_t page_id, void *to)
     off_t read_start = PAGESIZE * page_id;
     ssize_t readn;
 
-RELOAD:
+#ifdef PREAD_AVAILABLE
+    readn = pread(dm->db_fd, (char*)to, PAGESIZE, PAGESIZE * page_id);
+#else
+    pthread_mutex_lock(&dm->db_lock);
     result_offset = lseek(dm->db_fd, read_start, SEEK_SET);
 
-    if (result_offset == -1)
-        ECHECK_SEEK(FILELOCATION);
+    if (result_offset == -1) ECHECK_SEEK(FILELOCATION);
 
     readn = read(dm->db_fd, (char*)to, PAGESIZE);
-    if (((page_s*)to)->page_id != page_id)
-        goto RELOAD; // prevent unpredictable result
-
+    pthread_mutex_unlock(&dm->db_lock);
+#endif
     return (readn != PAGESIZE) ? DKREADINCOMP : DKREADACCEPT;
 }
 
@@ -38,12 +40,14 @@ uint32_t dk_write_page_by_pid(disk_mg_s *dm, uint32_t page_id, void *from)
     off_t result_offset;
     off_t write_start = PAGESIZE * page_id;
 
+    pthread_mutex_lock(&dm->db_lock);
     result_offset = lseek(dm->db_fd, write_start, SEEK_SET);
 
-    if (result_offset == -1)
-        ECHECK_SEEK(FILELOCATION);
+    if (result_offset == -1) ECHECK_SEEK(FILELOCATION);
     
     ssize_t writen = write(dm->db_fd, (char*)from, PAGESIZE);
+    pthread_mutex_unlock(&dm->db_lock);
+
     printf("Writen:  %zd, Page id: %d\n", writen, page_id);
     return (writen != PAGESIZE) ? DKWRITEINCOMP : DKWRITEACCEPT;
 }
@@ -124,6 +128,7 @@ bool db_open(disk_mg_s *dm)
 
     dm->db_fd = db_fd;
     // dm->log_fd = log_fd;
+    pthread_mutex_init(&dm->db_lock, NULL);
 
     return (flag) ? true : false;
 }

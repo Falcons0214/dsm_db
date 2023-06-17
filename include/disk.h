@@ -19,6 +19,8 @@ typedef struct disk_mg disk_mg_s;
 struct disk_mg
 {
     int db_fd;
+    pthread_mutex_t db_lock;
+
     int log_fd;
 
     uint32_t db_info_id;

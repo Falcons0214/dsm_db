@@ -6,12 +6,15 @@
 #include "./block.h"
 #include "./page.h"
 #include "./disk.h"
-
+#include <bits/pthreadtypes.h>
 #include <stdbool.h>
 #include <pthread.h>
+#include <stdint.h>
 
-typedef struct pool_mg_s pool_mg_s;
-typedef struct sub_pool_s sub_pool_s;
+typedef struct pool_mg pool_mg_s;
+typedef struct sub_pool sub_pool_s;
+typedef struct gpt gpt_s;
+typedef struct gnode gnode_s;
 
 #define PAGEBLOCKS 64
 #define POOLSIZE (PAGESIZE * PAGEBLOCKS)
@@ -29,7 +32,14 @@ typedef struct sub_pool_s sub_pool_s;
 #define PAGESWAPFAIL UINT32_MAX - 3
 #define PAGECANFREE UINT32_MAX - 4
 
-struct sub_pool_s
+/*
+ * gpt node state
+ */
+#define GNODELOADING 0
+#define GNODEFINISH 1
+#define GNODESWAPPING 2
+
+struct sub_pool
 {
     block_s *buf_list;
     page_s *pages;
@@ -39,13 +49,28 @@ struct sub_pool_s
     pthread_mutex_t sp_block_mutex;
 };
 
-struct pool_mg_s
+struct gnode
+{
+    list_node_s link;
+    uint32_t pid;
+    block_s *block;
+    char state;
+};
+
+struct gpt // linear time
+{
+    list_s glist;
+    pthread_mutex_t gpt_lock;
+};
+
+struct pool_mg
 {
     sub_pool_s sub_pool[SUBPOOLS];
     block_s *block_header;
     char *pool;
     void *address_index_table[SUBPOOLS];
 
+    gpt_s gpt;
     /*
      * Page ID Manager:
      * Use to manage page id, all need write back to disk.
@@ -58,11 +83,17 @@ struct pool_mg_s
     pthread_mutex_t ft_mutex;
 };
 
+inline gnode_s *gpt_allocate_node(uint32_t, block_s*, char);
+gnode_s *gpt_page_test_and_set(gpt_s*, uint32_t, bool*);
+void gpt_push(gpt_s*, gnode_s*);
+void gpt_remove(gpt_s*, gnode_s*);
+gnode_s* gpt_test_and_remove(gpt_s*, uint32_t);
+gnode_s*gpt_get_node_addr(gpt_s*, uint32_t);
+
 inline void hook_info(pool_mg_s*);
 inline int get_block_spm_index(pool_mg_s*, block_s*);
 inline uint32_t page_bring_in(disk_mg_s*, uint32_t, block_s*);
 inline uint32_t page_swap_out(disk_mg_s*, block_s*);
-
 void load_info_from_disk(pool_mg_s*, disk_mg_s*);
 void allocate_pages_id(pool_mg_s*, disk_mg_s*, uint32_t*, int);
 void free_pages_id(pool_mg_s*, disk_mg_s*, uint32_t*, int);
@@ -71,6 +102,7 @@ block_s* spm_allocate_block(sub_pool_s*);
 block_s** spm_allocate_blocks(sub_pool_s*, int);
 void spm_free_block(sub_pool_s*, block_s*);
 void spm_free_blocks(sub_pool_s*, block_s**, int);
+
 /*
  * Buffer Pool Interface
  */
@@ -83,8 +115,10 @@ void mp_page_close(pool_mg_s*, disk_mg_s*, block_s*);
 void mp_pages_close(pool_mg_s*, disk_mg_s*, block_s**, int);
 block_s* mp_page_create(pool_mg_s*, disk_mg_s*);
 block_s** mp_pages_create(pool_mg_s*, disk_mg_s*, int);
-void mp_page_delete(pool_mg_s*, disk_mg_s*, block_s*);
-void mp_pages_delete(pool_mg_s*, disk_mg_s*, block_s**, int);
+void mp_page_mdelete(pool_mg_s*, disk_mg_s*, block_s*);
+void mp_pages_mdelete(pool_mg_s*, disk_mg_s*, block_s**, int);
+void mp_page_ddelete(pool_mg_s*, disk_mg_s*, uint32_t);
+void mp_pages_ddelete(pool_mg_s*, disk_mg_s*, uint32_t*, int);
 
 bool mp_require_page_rlock(pool_mg_s*, block_s*);
 void mp_release_page_rlock(pool_mg_s*, block_s*);

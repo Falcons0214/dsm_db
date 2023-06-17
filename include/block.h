@@ -3,7 +3,7 @@
 
 #include "./page.h"
 #include "../src/latch/rwlock.h"
-
+#include <stdatomic.h>
 #include <stdint.h>
 
 typedef struct block block_s;
@@ -12,6 +12,8 @@ struct block
 {
     block_s *next_empty;
 
+    atomic_int reference_count;
+    
     char state;
     rwlock_s rwlock;
     uint32_t flags;
@@ -23,9 +25,6 @@ struct block
 
 #define PAGEINPOOL 0
 #define PAGENOTINPOOL 1
-#define PAGELOADING 2
-#define PAGESWAPPING 3
-#define PAGEDESTORY 4
 
 /* BUFFER-PAGE (Block): Flags
  * 
