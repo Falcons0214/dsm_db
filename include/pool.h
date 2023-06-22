@@ -38,6 +38,7 @@ typedef struct gnode gnode_s;
 #define GNODELOADING 0
 #define GNODEFINISH 1
 #define GNODESWAPPING 2
+#define GNODEDESTORY 3
 
 struct sub_pool
 {
@@ -83,12 +84,17 @@ struct pool_mg
     pthread_mutex_t ft_mutex;
 };
 
-inline gnode_s *gpt_allocate_node(uint32_t, block_s*, char);
-gnode_s *gpt_page_test_and_set(gpt_s*, uint32_t, bool*);
+/*
+ * GPT
+ *
+ */
+inline gnode_s* gpt_allocate_node(uint32_t, block_s*, char);
+gnode_s* gpt_page_test_and_set(gpt_s*, uint32_t);
+gnode_s* gpt_close_test_and_set(gpt_s*, uint32_t);
+gnode_s* gpt_get_node_addr(gpt_s*, uint32_t);
 void gpt_push(gpt_s*, gnode_s*);
 void gpt_remove(gpt_s*, gnode_s*);
-gnode_s* gpt_test_and_remove(gpt_s*, uint32_t);
-gnode_s*gpt_get_node_addr(gpt_s*, uint32_t);
+
 
 inline void hook_info(pool_mg_s*);
 inline int get_block_spm_index(pool_mg_s*, block_s*);
@@ -97,6 +103,7 @@ inline uint32_t page_swap_out(disk_mg_s*, block_s*);
 void load_info_from_disk(pool_mg_s*, disk_mg_s*);
 void allocate_pages_id(pool_mg_s*, disk_mg_s*, uint32_t*, int);
 void free_pages_id(pool_mg_s*, disk_mg_s*, uint32_t*, int);
+
 
 block_s* spm_allocate_block(sub_pool_s*);
 block_s** spm_allocate_blocks(sub_pool_s*, int);
