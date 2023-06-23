@@ -89,9 +89,8 @@ struct pool_mg
  *
  */
 inline gnode_s* gpt_allocate_node(uint32_t, block_s*, char);
-gnode_s* gpt_page_test_and_set(gpt_s*, uint32_t);
-gnode_s* gpt_close_test_and_set(gpt_s*, uint32_t);
-gnode_s* gpt_get_node_addr(gpt_s*, uint32_t);
+gnode_s* gpt_open_test_and_set(gpt_s*, uint32_t);
+gnode_s* gpt_close_test_and_set(gpt_s*, uint32_t, char);
 void gpt_push(gpt_s*, gnode_s*);
 void gpt_remove(gpt_s*, gnode_s*);
 
