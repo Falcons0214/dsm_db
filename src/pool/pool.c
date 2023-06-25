@@ -1,7 +1,6 @@
 #include "../latch/rwlock.h"
 #include "../../include/pool.h"
 #include "../error/error.h"
-#include <bits/pthreadtypes.h>
 #include <malloc.h>
 #include <pthread.h>
 #include <stdatomic.h>
@@ -367,7 +366,7 @@ gnode_s* gpt_close_test_and_set(gpt_s *gpt, uint32_t page_id, char state)
                 gnode->state = state;
                 pthread_mutex_unlock(&gpt->gpt_lock);
                 return gnode;
-            }else {
+            }else{
                 pthread_mutex_unlock(&gpt->gpt_lock);
                 return NULL;
             }
@@ -421,7 +420,7 @@ block_s* mp_page_create(pool_mg_s *pm, disk_mg_s *dm)
 
 block_s** mp_pages_create(pool_mg_s *pm, disk_mg_s *dm, int n)
 {
-    block_s **blocks;
+    block_s **blocks = NULL;
     gnode_s *gnode;
     uint32_t pages_id[n];
 
@@ -444,7 +443,7 @@ block_s** mp_pages_create(pool_mg_s *pm, disk_mg_s *dm, int n)
 }
 
 /* 
- * mp_page & pages_mdelete
+ * mp_page_mdelete
  *
  * Use to delete the page is in memory.
  * mp_pages_delete assume those pages is in same sub pool !
@@ -466,19 +465,8 @@ void mp_page_mdelete(pool_mg_s *pm, disk_mg_s *dm, block_s *block) // !!
     free(gnode);
 }
 
-void mp_pages_mdelete(pool_mg_s *pm, disk_mg_s *dm, block_s **blocks, int n) // !!!!
-{
-    int spm_index = get_block_spm_index(pm, blocks[0]);
-    uint32_t pages_id[n];
-    for (int i = 0; i < n; i ++)
-        pages_id[i] = blocks[i]->page->page_id;
-    spm_free_blocks(&pm->sub_pool[spm_index], blocks, n);
-    free_pages_id(pm, dm, pages_id, n);
-    free(blocks);
-}
-
 /* 
- * mp_page & pages_ddelete
+ * mp_page_ddelete
  *
  * Use to delete the page is in disk.
  * Direct free page id, so the page is still in disk, it
@@ -486,12 +474,7 @@ void mp_pages_mdelete(pool_mg_s *pm, disk_mg_s *dm, block_s **blocks, int n) // 
  */
 void mp_page_ddelete(pool_mg_s *pm, disk_mg_s *dm, uint32_t page_id)
 {
-
-}
-
-void mp_pages_ddelete(pool_mg_s *pm, disk_mg_s *dm, uint32_t *pages_id, int n)
-{
-
+    free_pages_id(pm, dm, &page_id, 1);
 }
 
 /*
@@ -541,35 +524,6 @@ block_s* mp_page_open(pool_mg_s *pm, disk_mg_s *dm, uint32_t page_id)
     return block;
 }
 
-block_s** mp_pages_open(pool_mg_s *pm, disk_mg_s *dm, uint32_t *pages_id, int needs) // !!!!
-{
-    block_s **blocks, *block;
-    int sp_index;
-
-    // ??
-    // for (int i = 0; i < needs; i ++) {
-    //     if ((block = gpt_page_test_and_set(&pm->gpt, pages_id[i]))) {
-            
-    //     }
-    // }
-
-    for (int i = 1; i < SUBPOOLS; i ++) {
-        blocks = spm_allocate_blocks(&pm->sub_pool[i], needs);
-        sp_index = i;
-        if (blocks) break;
-    }
-    if (!blocks) return NULL;
-    for (int i = 0; i < needs; i ++) {
-        if(page_bring_in(dm, pages_id[i], blocks[i]) == PAGELOADFAIL) {
-            spm_free_blocks(&pm->sub_pool[sp_index], blocks, needs);
-            free(blocks);
-            return NULL;
-        }
-        blocks[i]->state = PAGEINPOOL;
-    }
-    return blocks;
-}
-
 void mp_page_close(pool_mg_s *pm, disk_mg_s *dm, block_s *block)
 {
     uint32_t page_id = block->page->page_id;
@@ -583,19 +537,6 @@ void mp_page_close(pool_mg_s *pm, disk_mg_s *dm, block_s *block)
     spm_free_block(&pm->sub_pool[spm_index], block);
     gpt_remove(&pm->gpt, gnode);
     free(gnode);
-}
-
-void mp_pages_close(pool_mg_s *pm, disk_mg_s *dm, block_s **blocks, int n) // !!!!
-{
-    int spm_index = get_block_spm_index(pm, blocks[0]);
-    for (int i = 0; i < n; i ++) {
-        if (PINCHECK(blocks[i]->flags)) {
-
-        }else
-            page_swap_out(dm, blocks[i]);
-    }
-    spm_free_blocks(&pm->sub_pool[spm_index], blocks, n);
-    free(blocks);
 }
 
 /*

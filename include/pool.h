@@ -3,6 +3,7 @@
 
 // #include "../common/threadpool.h"
 #include "../common/linklist.h"
+#include "../common/avl.h"
 #include "./block.h"
 #include "./page.h"
 #include "./disk.h"
@@ -115,16 +116,12 @@ void spm_free_blocks(sub_pool_s*, block_s**, int);
 pool_mg_s* mp_pool_open(bool, disk_mg_s*);
 void mp_pool_close(pool_mg_s*, disk_mg_s*);
 
-block_s* mp_page_open(pool_mg_s*, disk_mg_s*, uint32_t);
-block_s** mp_pages_open(pool_mg_s*, disk_mg_s*, uint32_t*, int);
-void mp_page_close(pool_mg_s*, disk_mg_s*, block_s*);
-void mp_pages_close(pool_mg_s*, disk_mg_s*, block_s**, int);
 block_s* mp_page_create(pool_mg_s*, disk_mg_s*);
 block_s** mp_pages_create(pool_mg_s*, disk_mg_s*, int);
+block_s* mp_page_open(pool_mg_s*, disk_mg_s*, uint32_t);
+void mp_page_close(pool_mg_s*, disk_mg_s*, block_s*);
 void mp_page_mdelete(pool_mg_s*, disk_mg_s*, block_s*);
-void mp_pages_mdelete(pool_mg_s*, disk_mg_s*, block_s**, int);
 void mp_page_ddelete(pool_mg_s*, disk_mg_s*, uint32_t);
-void mp_pages_ddelete(pool_mg_s*, disk_mg_s*, uint32_t*, int);
 
 bool mp_require_page_rlock(pool_mg_s*, block_s*);
 void mp_release_page_rlock(pool_mg_s*, block_s*);
