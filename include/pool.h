@@ -53,7 +53,6 @@ struct sub_pool
 
 struct gnode
 {
-    list_node_s link;
     uint32_t pid;
     block_s *block;
     char state;
@@ -61,7 +60,7 @@ struct gnode
 
 struct gpt // linear time
 {
-    list_s glist;
+    avl_tree_s glist;
     pthread_mutex_t gpt_lock;
 };
 
@@ -90,10 +89,10 @@ struct pool_mg
  *
  */
 inline gnode_s* gpt_allocate_node(uint32_t, block_s*, char);
-gnode_s* gpt_open_test_and_set(gpt_s*, uint32_t);
-gnode_s* gpt_close_test_and_set(gpt_s*, uint32_t, char);
-void gpt_push(gpt_s*, gnode_s*);
-void gpt_remove(gpt_s*, gnode_s*);
+avl_node_s* gpt_open_test_and_set(gpt_s*, uint32_t);
+avl_node_s* gpt_close_test_and_set(gpt_s*, uint32_t, char);
+void gpt_push(gpt_s*, avl_node_s*);
+void gpt_remove(gpt_s*, avl_node_s*);
 
 
 inline void hook_info(pool_mg_s*);

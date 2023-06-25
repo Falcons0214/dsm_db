@@ -234,7 +234,7 @@ pool_mg_s* mp_pool_open(bool init, disk_mg_s *dm)
     ECHECK_MALLOC(pool->pool, FILELOCATION);
 
     pthread_mutex_init(&pool->gpt.gpt_lock, NULL);
-    list_init(&pool->gpt.glist);
+    avl_tree_init(&pool->gpt.glist);
 
     page_s *tmp_p = (page_s*)pool->pool;
     block_s *tmp_b = pool->block_header;
@@ -297,97 +297,96 @@ gnode_s* gpt_allocate_node(uint32_t page_id, block_s *b_addr, char state)
 {
     gnode_s *node = (gnode_s*)malloc(sizeof(gnode_s));
     ECHECK_MALLOC(node, FILELOCATION);
-    list_node_init(&node->link);
     node->pid = page_id;
     node->block = b_addr;
     node->state = state;
     return node;
 }
 
-gnode_s* gpt_open_test_and_set(gpt_s *gpt, uint32_t page_id)
+avl_node_s* gpt_open_test_and_set(gpt_s *gpt, uint32_t page_id)
 {
     list_node_s *cur;
     gnode_s *gnode, *new = gpt_allocate_node(page_id, NULL, GNODELOADING);
-    block_s *tmp;
-    bool add_again = false;
-
     ECHECK_MALLOC(new, FILELOCATION);
 
+    block_s *tmp;
+    bool add_again = false;
+    avl_node_s *avl_tmp, *avl_new = avl_alloc_node((void*)new, page_id);
+    ECHECK_MALLOC(avl_new, FILELOCATION);
+
     pthread_mutex_lock(&gpt->gpt_lock);
-    for (cur = gpt->glist.head; cur; cur = cur->next) {
-        gnode = (gnode_s*)cur;
-        if (gnode->pid == page_id) {
-            if (gnode->state == GNODESWAPPING) {
-                tmp = gnode->block;
-                while(tmp->state != PAGENOTINPOOL);   
-                break;
-            }else if (gnode->state == GNODEDESTORY) {
-                pthread_mutex_unlock(&gpt->gpt_lock);
-                free(new);
-                return NULL;
-            }else{
-                if (gnode->block)
-                    atomic_fetch_add(&(gnode->block->reference_count), 1);
-                else
-                    add_again = true;
-                pthread_mutex_unlock(&gpt->gpt_lock);
-                
-                // Waiting block hook 
-                while (gnode->state == GNODELOADING);
-                // After hook increase ref count again
-                if (add_again)
-                    atomic_fetch_add(&(gnode->block->reference_count), 1);
-                free(new);
-                return gnode;
-            }
+    avl_tmp = avl_search_by_pid(&gpt->glist, page_id);
+    if (avl_tmp) {
+        gnode = (gnode_s*)avl_tmp->obj;
+        if (gnode->state == GNODESWAPPING) {
+            tmp = gnode->block;
+            while(tmp->state != PAGENOTINPOOL);
+        }else if (gnode->state == GNODEDESTORY) {
+            pthread_mutex_unlock(&gpt->gpt_lock);
+            free(new);
+            free(avl_new);
+            return NULL;
+        }else{
+            if (gnode->block)
+                atomic_fetch_add(&(gnode->block->reference_count), 1);
+            else
+                add_again = true;
+            pthread_mutex_unlock(&gpt->gpt_lock);
+            
+            // Waiting block hook 
+            while (gnode->state == GNODELOADING);
+            // After hook increase ref count again
+            if (add_again)
+                atomic_fetch_add(&(gnode->block->reference_count), 1);
+            free(new);
+            free(avl_new);
+            return avl_tmp;
         }
     }
-    list_push_tail(&gpt->glist, &new->link);
+    avl_insert(&gpt->glist, avl_new);
     pthread_mutex_unlock(&gpt->gpt_lock);
-
-    return new;
+    return avl_new;
 }
 
-gnode_s* gpt_close_test_and_set(gpt_s *gpt, uint32_t page_id, char state)
+avl_node_s* gpt_close_test_and_set(gpt_s *gpt, uint32_t page_id, char state)
 {
     list_node_s *cur;
     gnode_s *gnode;
+    avl_node_s *avl_tmp;
     int ref = 0;
 
     pthread_mutex_lock(&gpt->gpt_lock);
-    for (cur = gpt->glist.head; cur; cur = cur->next) {
-        gnode = (gnode_s*)cur;
-        if (gnode->pid == page_id) {
-            if (state == GNODESWAPPING)
-                ref = atomic_fetch_sub(&gnode->block->reference_count, 1);
-            else
-                ref = atomic_load(&gnode->block->reference_count);
-            if (ref == 1) {
-                gnode->state = state;
-                pthread_mutex_unlock(&gpt->gpt_lock);
-                return gnode;
-            }else{
-                pthread_mutex_unlock(&gpt->gpt_lock);
-                return NULL;
-            }
+    avl_tmp = avl_search_by_pid(&gpt->glist, page_id);
+    if (avl_tmp) {
+        gnode = (gnode_s*)avl_tmp->obj; 
+        if (state == GNODESWAPPING)
+            ref = atomic_fetch_sub(&gnode->block->reference_count, 1);
+        else
+            ref = atomic_load(&gnode->block->reference_count);
+        if (ref == 1) {
+            gnode->state = state;
+            pthread_mutex_unlock(&gpt->gpt_lock);
+            return avl_tmp;
+        }else{
+            pthread_mutex_unlock(&gpt->gpt_lock);
+            return NULL;
         }
     }
     pthread_mutex_unlock(&gpt->gpt_lock);
-
     return NULL;
 }
 
-void gpt_push(gpt_s *gpt, gnode_s *gnode)
+void gpt_push(gpt_s *gpt, avl_node_s *node)
 {
     pthread_mutex_lock(&gpt->gpt_lock);
-    list_push_tail(&gpt->glist, &gnode->link);
+    avl_insert(&gpt->glist, node);
     pthread_mutex_unlock(&gpt->gpt_lock);
 }
 
-void gpt_remove(gpt_s *gpt, gnode_s *gnode)
+void gpt_remove(gpt_s *gpt, avl_node_s *node)
 {
     pthread_mutex_lock(&gpt->gpt_lock);
-    list_remove_by_addr(&gpt->glist, &gnode->link);
+    avl_remove_by_addr(&gpt->glist, node);
     pthread_mutex_unlock(&gpt->gpt_lock);
 }
 
@@ -398,6 +397,7 @@ block_s* mp_page_create(pool_mg_s *pm, disk_mg_s *dm)
 {
     block_s *block;
     gnode_s *gnode;
+    avl_node_s *a_node;
     uint32_t page_id;
 
     for (int i = 0; i < SUBPOOLS; i ++) {
@@ -411,7 +411,11 @@ block_s* mp_page_create(pool_mg_s *pm, disk_mg_s *dm)
 
     gnode = gpt_allocate_node(page_id, block, GNODEFINISH);
     ECHECK_MALLOC(gnode, FILELOCATION);
-    gpt_push(&pm->gpt, gnode);
+
+    a_node = avl_alloc_node((void*)gnode, page_id);
+    ECHECK_MALLOC(a_node, FILELOCATION);
+
+    gpt_push(&pm->gpt, a_node);
     page_init(block->page, 4, page_id, PAGEIDNULL);
     
     block->state = PAGEINPOOL;
@@ -422,6 +426,7 @@ block_s** mp_pages_create(pool_mg_s *pm, disk_mg_s *dm, int n)
 {
     block_s **blocks = NULL;
     gnode_s *gnode;
+    avl_node_s *a_node;
     uint32_t pages_id[n];
 
     for (int i = 1; i < SUBPOOLS; i ++) {
@@ -435,7 +440,11 @@ block_s** mp_pages_create(pool_mg_s *pm, disk_mg_s *dm, int n)
     for (int i = 0; i < n; i ++) {
         gnode = gpt_allocate_node(pages_id[i], blocks[i], GNODEFINISH);
         ECHECK_MALLOC(gnode, FILELOCATION);
-        gpt_push(&pm->gpt, gnode);
+
+        a_node = avl_alloc_node((void*)gnode, pages_id[i]);
+        ECHECK_MALLOC(a_node, FILELOCATION);
+
+        gpt_push(&pm->gpt, a_node);
         page_init(blocks[i]->page, 4, pages_id[i], PAGEIDNULL);
         blocks[i]->state = PAGEINPOOL;
     }
@@ -451,7 +460,8 @@ block_s** mp_pages_create(pool_mg_s *pm, disk_mg_s *dm, int n)
 void mp_page_mdelete(pool_mg_s *pm, disk_mg_s *dm, block_s *block) // !!
 {
     uint32_t page_id = block->page->page_id;
-    gnode_s *gnode = gpt_close_test_and_set(&pm->gpt, page_id, GNODEDESTORY);
+    avl_node_s *a_node = gpt_close_test_and_set(&pm->gpt, page_id, GNODESWAPPING);
+    gnode_s *gnode = (a_node) ? (gnode_s*)a_node->obj : NULL;
 
     if (!gnode)
         return;
@@ -461,7 +471,7 @@ void mp_page_mdelete(pool_mg_s *pm, disk_mg_s *dm, block_s *block) // !!
     block->state = PAGENOTINPOOL;
     spm_free_block(&pm->sub_pool[spm_index], block);
     free_pages_id(pm, dm, &page_id, 1);
-    gpt_remove(&pm->gpt, gnode);
+    gpt_remove(&pm->gpt, a_node);
     free(gnode);
 }
 
@@ -486,9 +496,9 @@ block_s* mp_page_open(pool_mg_s *pm, disk_mg_s *dm, uint32_t page_id)
     block_s *block;
     bool gnode_exist = false;
     char state;
+    avl_node_s *a_node = gpt_open_test_and_set(&pm->gpt, page_id);
+    gnode_s *gnode = (a_node) ? (gnode_s*)a_node->obj : NULL;
 
-    gnode_s *gnode = gpt_open_test_and_set(&pm->gpt, page_id);
-   
     if (!gnode)
         return NULL;
 
@@ -502,7 +512,7 @@ block_s* mp_page_open(pool_mg_s *pm, disk_mg_s *dm, uint32_t page_id)
     }
     
     if (!block) {
-        gpt_remove(&pm->gpt, gnode);
+        gpt_remove(&pm->gpt, a_node);
         free(gnode);
         return NULL;   
     }
@@ -514,7 +524,7 @@ block_s* mp_page_open(pool_mg_s *pm, disk_mg_s *dm, uint32_t page_id)
         int spm_index = get_block_spm_index(pm, block);
         spm_free_block(&pm->sub_pool[spm_index], block);
         block->state = PAGENOTINPOOL;
-        gpt_remove(&pm->gpt, gnode);
+        gpt_remove(&pm->gpt, a_node);
         free(gnode);
         return NULL;
     }
@@ -527,15 +537,16 @@ block_s* mp_page_open(pool_mg_s *pm, disk_mg_s *dm, uint32_t page_id)
 void mp_page_close(pool_mg_s *pm, disk_mg_s *dm, block_s *block)
 {
     uint32_t page_id = block->page->page_id;
-    gnode_s *gnode = gpt_close_test_and_set(&pm->gpt, page_id, GNODESWAPPING);
+    avl_node_s *a_node = gpt_close_test_and_set(&pm->gpt, page_id, GNODESWAPPING);
+    gnode_s *gnode = (a_node) ? (gnode_s*)a_node->obj : NULL;
 
     if (!gnode) return;
-
+    
     int spm_index = get_block_spm_index(pm, block);
     page_swap_out(dm, block);
     block->state = PAGENOTINPOOL;
     spm_free_block(&pm->sub_pool[spm_index], block);
-    gpt_remove(&pm->gpt, gnode);
+    gpt_remove(&pm->gpt, a_node);
     free(gnode);
 }
 

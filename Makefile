@@ -1,7 +1,7 @@
 CC = clang
-LIBSTT = -pthread -lm
-LIBS = -pthread 
-CFLAGS = -Wall ${LIBSTT} -std=c11 
+LIBSTT = -pthread -lm 
+LIBS = -pthread
+CFLAGS = -Wall ${LIBSTT} -std=c11
 
 SRC = ./src
 INCLUDE = ./include
@@ -26,7 +26,9 @@ t1: ${COMMON}/linklist.o ${ERROR}/error.o ${TEST}/t1.c
 pagetest: ${DISK}/page.o ${TEST}/pagetest.c
 	${test_template}
 
-pooltest: ${ERROR}/error.o ${LATCH}/rwlock.o ${DISK}/page.o ${DISK}/disk.o ${POOL}/pool.o ${TEST}/pooltest.c
+pooltest: ${ERROR}/error.o ${COMMON}/avl.o ${LATCH}/rwlock.o \
+	 	  ${DISK}/page.o ${DISK}/disk.o ${POOL}/pool.o \
+		  ${TEST}/pooltest.c
 	${test_template}
 
 tpooltest: ${COMMON}/threadpool.o ${TEST}/tpooltest.c
@@ -41,4 +43,6 @@ lllqtest: ${COMMON}/lllq.o ${TEST}/lllqtest.c
 pairtest: ${COMMON}/pair.o ${TEST}/pairtest.c
 	${test_template}
 
+avltest: ${COMMON}/avl.o ${TEST}/avltest.c
+	${test_template}
 
