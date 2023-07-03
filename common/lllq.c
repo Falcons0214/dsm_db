@@ -26,9 +26,6 @@ lllq_s* lllq_create()
 
 void lllq_destory(lllq_s *q)
 {
-    pthread_mutex_destroy(&q->enlock);
-    pthread_mutex_destroy(&q->delock);
-    pthread_cond_destroy(&q->wakeup);
     free(q);
 }
 

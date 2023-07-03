@@ -27,7 +27,7 @@ typedef struct __jobqueue
     threadtask_t *head, *tail;
     pthread_cond_t cond_nonempty;
     pthread_mutex_t rwlock;
-} jobqueue_t;   
+} jobqueue_t;
 
 struct __tpool_future
 {

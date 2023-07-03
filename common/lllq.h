@@ -10,8 +10,8 @@ typedef struct lllq_node lllq_node_s;
 
 struct lllq_node
 {
-    void *val;
     lllq_node_s *next;
+    void *val;
 };
 
 struct lllq
