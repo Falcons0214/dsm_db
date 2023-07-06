@@ -9,18 +9,23 @@
 djb2_hash_s* djb2_hash_create(int buckets)
 {
     djb2_hash_s *hash = (djb2_hash_s*)malloc(sizeof(djb2_hash_s));
-    if (!hash)  perror("djb2 hash allocate fail\n");
+    if (!hash) {
+        perror("djb2 hash allocate fail\n");
+        return NULL;
+    }
 
     hash->buckets = buckets;
     hash->hash_table = (djb2_node_s**)malloc(sizeof(djb2_node_s*) * buckets);
-    hash->rw_lock_table = (pthread_rwlock_t*)malloc(sizeof(pthread_rwlock_t) * buckets);
+    hash->mlock_table = (pthread_mutex_t*)malloc(sizeof(pthread_mutex_t) * buckets);
 
-    if (!hash->hash_table || !hash->rw_lock_table)
+    if (!hash->hash_table || !hash->mlock_table) {
         perror("djb2 hash member data allocate fail\n");
+        return NULL;
+    }
     
     for (int i = 0; i < buckets; i++) {
         hash->hash_table[i] = NULL;
-        pthread_rwlock_init(&hash->rw_lock_table[i], NULL);
+        pthread_mutex_init(&hash->mlock_table[i], NULL);
     }
 
     return hash;
@@ -30,8 +35,8 @@ void djb2_hash_free(djb2_hash_s *hash)
 {
     free(hash->hash_table);
     for (int i = 0; i < hash->buckets; i ++)
-        pthread_rwlock_destroy(&hash->rw_lock_table[i]);
-    free(hash->rw_lock_table);
+        pthread_mutex_destroy(&hash->mlock_table[i]);
+    free(hash->mlock_table);
     free(hash);
 }
 
@@ -51,7 +56,7 @@ int djb2_search(djb2_hash_s *hash, char *str)
     int exist = -1;
     djb2_node_s *cur = hash->hash_table[bucket_index];
 
-    pthread_rwlock_rdlock(&hash->rw_lock_table[bucket_index]);
+    pthread_mutex_lock(&hash->mlock_table[bucket_index]);
     while(cur) {
         if (!strcmp(cur->table_name, str)) {
             exist = cur->page_id;
@@ -59,7 +64,7 @@ int djb2_search(djb2_hash_s *hash, char *str)
         }
         cur = cur->next;
     }
-    pthread_rwlock_unlock(&hash->rw_lock_table[bucket_index]);
+    pthread_mutex_unlock(&hash->mlock_table[bucket_index]);
     return exist;
 }
 
@@ -69,19 +74,22 @@ bool djb2_push(djb2_hash_s *hash, char *str, uint32_t page_id)
     int bucket_index = hash_value % hash->buckets;
 
     djb2_node_s *n = (djb2_node_s*)malloc(sizeof(djb2_node_s));
-    if (!n) perror("djb2 push fail");
+    if (!n) {
+        perror("djb2 push fail");
+        return NULL;
+    }
 
     n->table_name = str;
     n->page_id = page_id;
 
-    pthread_rwlock_wrlock(&hash->rw_lock_table[bucket_index]);
+    pthread_mutex_lock(&hash->mlock_table[bucket_index]);
     if (!hash->hash_table[bucket_index])
         hash->hash_table[bucket_index] = n;
     else {
         n->next = hash->hash_table[bucket_index];
         hash->hash_table[bucket_index] = n;
     }
-    pthread_rwlock_unlock(&hash->rw_lock_table[bucket_index]);
+    pthread_mutex_unlock(&hash->mlock_table[bucket_index]);
     return true;
 }
 
@@ -91,7 +99,7 @@ void djb2_pop(djb2_hash_s *hash, char *str)
     int bucket_index = hash_value % hash->buckets;
     djb2_node_s *cur = hash->hash_table[bucket_index], *prev;
 
-    pthread_rwlock_wrlock(&hash->rw_lock_table[bucket_index]);
+    pthread_mutex_lock(&hash->mlock_table[bucket_index]);
     while(cur) {
         if (!strcmp(cur->table_name, str)) {
             if (hash->hash_table[bucket_index] == cur) {
@@ -105,7 +113,7 @@ void djb2_pop(djb2_hash_s *hash, char *str)
         prev = cur;
         cur = cur->next;
     }
-    pthread_rwlock_unlock(&hash->rw_lock_table[bucket_index]);
+    pthread_mutex_unlock(&hash->mlock_table[bucket_index]);
     free(cur->table_name);
     free(cur);
 }

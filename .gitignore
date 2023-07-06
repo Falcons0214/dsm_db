@@ -4,3 +4,4 @@ test_file
 .vscode
 *.o
 dbfile
+tt*

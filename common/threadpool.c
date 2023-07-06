@@ -188,7 +188,6 @@ static void *jobqueue_fetch(void *queue)
 
     while (1)
     {
-
         pthread_mutex_lock(&jobqueue->rwlock);
         pthread_setcancelstate(PTHREAD_CANCEL_ENABLE, &old_state);
         pthread_testcancel();

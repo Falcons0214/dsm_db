@@ -18,7 +18,7 @@ struct djb2_hash
 {
     int buckets;
     djb2_node_s **hash_table;
-    pthread_rwlock_t *rw_lock_table;
+    pthread_mutex_t *mlock_table;
 };
 
 unsigned long __hash(char*);
