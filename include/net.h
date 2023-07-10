@@ -39,8 +39,6 @@ struct conn_info
 {
     sys_args_s *sysarg;
     int fd;
-
-    // timer for check connection still alive
 };
 
 struct conn_manager

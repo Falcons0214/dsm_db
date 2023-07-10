@@ -2,7 +2,8 @@
 #define BLOCK_H
 
 #include "./page.h"
-#include "../src/latch/rwlock.h"
+// #include "../src/latch/rwlock.h"
+#include <pthread.h>
 #include <stdatomic.h>
 #include <stdint.h>
 
@@ -15,7 +16,8 @@ struct block
     atomic_int reference_count;
     
     char state;
-    rwlock_s rwlock;
+    // rwlock_s rwlock;
+    pthread_rwlock_t rwlock;
     uint32_t flags;
     uint8_t priority;
     page_s *page;

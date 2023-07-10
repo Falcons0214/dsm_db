@@ -2,7 +2,7 @@
 #define POOL_H
 
 // #include "../common/threadpool.h"
-#include "../common/linklist.h"
+// #include "../common/linklist.h"
 #include "../common/avl.h"
 #include "./block.h"
 #include "./page.h"
@@ -11,6 +11,7 @@
 #include <stdbool.h>
 #include <pthread.h>
 #include <stdint.h>
+#include <sys/types.h>
 
 typedef struct pool_mg pool_mg_s;
 typedef struct sub_pool sub_pool_s;
@@ -58,7 +59,7 @@ struct gnode
     char state;
 };
 
-struct gpt // linear time
+struct gpt
 {
     avl_tree_s glist;
     pthread_mutex_t gpt_lock;
@@ -71,7 +72,16 @@ struct pool_mg
     char *pool;
     void *address_index_table[SUBPOOLS];
 
+    /*
+     * Record in memory pages.
+     */
     gpt_s gpt;
+
+    /*
+     * Pointer to the tail of page directory list.
+     */
+    uint32_t page_dir_tail;
+
     /*
      * Page ID Manager:
      * Use to manage page id, all need write back to disk.
@@ -90,12 +100,11 @@ struct pool_mg
  */
 inline gnode_s* gpt_allocate_node(uint32_t, block_s*, char);
 avl_node_s* gpt_open_test_and_set(gpt_s*, uint32_t);
-avl_node_s* gpt_close_test_and_set(gpt_s*, uint32_t, char);
+avl_node_s* gpt_close_test_and_set(gpt_s*, uint32_t, char, bool);
 void gpt_push(gpt_s*, avl_node_s*);
 void gpt_remove(gpt_s*, avl_node_s*);
 
-
-inline void hook_info(pool_mg_s*);
+inline void hook_info(pool_mg_s*, disk_mg_s*);
 inline int get_block_spm_index(pool_mg_s*, block_s*);
 inline uint32_t page_bring_in(disk_mg_s*, uint32_t, block_s*);
 inline uint32_t page_swap_out(disk_mg_s*, block_s*);
@@ -118,13 +127,21 @@ void mp_pool_close(pool_mg_s*, disk_mg_s*);
 block_s* mp_page_create(pool_mg_s*, disk_mg_s*);
 block_s** mp_pages_create(pool_mg_s*, disk_mg_s*, int);
 block_s* mp_page_open(pool_mg_s*, disk_mg_s*, uint32_t);
-void mp_page_close(pool_mg_s*, disk_mg_s*, block_s*);
+void mp_page_close(pool_mg_s*, disk_mg_s*, block_s*, bool);
 void mp_page_mdelete(pool_mg_s*, disk_mg_s*, block_s*);
 void mp_page_ddelete(pool_mg_s*, disk_mg_s*, uint32_t);
+void mp_page_sync(pool_mg_s*, disk_mg_s*, block_s*);
 
-bool mp_require_page_rlock(pool_mg_s*, block_s*);
-void mp_release_page_rlock(pool_mg_s*, block_s*);
-bool mp_require_page_wlock(pool_mg_s*, block_s*);
-void mp_release_page_wlock(pool_mg_s*, block_s*);
+/*
+ * Schedular for general & system
+ */
+#define POOLISFULL 0
+char mp_schedular(pool_mg_s*, disk_mg_s*, int);
+char sys_schedular(pool_mg_s*, disk_mg_s*, int);
+
+int mp_require_page_rlock(block_s*);
+int mp_release_page_rlock(block_s*);
+int mp_require_page_wlock(block_s*);
+int mp_release_page_wlock(block_s*);
 
 #endif /* POOL_H */
