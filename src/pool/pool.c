@@ -1,6 +1,8 @@
 #include "../latch/rwlock.h"
 #include "../../include/pool.h"
 #include "../error/error.h"
+#include "../../include/db.h"
+
 #include <malloc.h>
 #include <pthread.h>
 #include <stdatomic.h>
@@ -11,10 +13,6 @@
 
 #define FILELOCATION "pool.c"
 
-/*
- * !! ------> modify, untest
- * !!!! ------> unmodify, untest
- */
 int get_block_spm_index(pool_mg_s *pm, block_s *block)
 {
     uint64_t x = (uint64_t)block, y;
@@ -107,55 +105,84 @@ void spm_free_blocks(sub_pool_s *spm, block_s **blocks, int n)
  * Bring DB info, Page dir, Free_id table, in system pool.
  * 
  */
-void hook_info(pool_mg_s *pm)
+void hook_info(pool_mg_s *pm, disk_mg_s *dm)
 {
     sub_pool_s *sys_pool = &pm->sub_pool[SYSTEMSUBPOOLINDEX];
     pm->ft_block = &sys_pool->buf_list[FPIDTABLEINDEX];
-
-    uint32_t *tmp = (uint32_t*)p_entry_read_by_index(sys_pool->buf_list[DBINFOINDEX].page, 0);
-    pm->page_counter = *tmp;
+    pm->page_counter = *(uint32_t*)p_entry_read_by_index(sys_pool->buf_list[DBINFOINDEX].page, 0);
+    pm->page_dir_tail = *(uint32_t*)p_entry_read_by_index(sys_pool->buf_list[DBINFOINDEX].page, 2);
+    if (pm->page_dir_tail != 1)
+        mp_page_open(pm, dm, pm->page_dir_tail);
 }
 
 void load_info_from_disk(pool_mg_s *pm, disk_mg_s *dm)
 {
-    block_s **blocks = spm_allocate_blocks(&pm->sub_pool[SYSTEMSUBPOOLINDEX], 3);
-
+    uint32_t free_top;
     for (int i = 0; i < 3; i ++) {
         if (i == 2) {
-            uint32_t free_top = *((uint32_t*)p_entry_read_by_index(blocks[0]->page, 1));
-            if (page_bring_in(dm, free_top, blocks[i]) == PAGELOADFAIL)
-                ECHECK_LOADINFO(FILELOCATION, "System page load fail.\n");
-        }else{
-            if (page_bring_in(dm, i, blocks[i]) == PAGELOADFAIL)
-                ECHECK_LOADINFO(FILELOCATION, "System page load fail.\n");
-        }
+            free_top = *((uint32_t*)p_entry_read_by_index(pm->block_header[0].page, 1));
+            mp_page_open(pm, dm, free_top);     
+        }else
+            mp_page_open(pm, dm, i);
     }
-    
-    hook_info(pm);
-    free(blocks); // These pages didn't swap out.
+
+    hook_info(pm, dm);
 }
 
 void init_db_info(pool_mg_s *pm)
 {
-    block_s **blocks = spm_allocate_blocks(&pm->sub_pool[SYSTEMSUBPOOLINDEX], 3);
+    block_s **blocks = spm_allocate_blocks(&pm->sub_pool[0], 3);
+
+    // Use to set the free page id start, above is for system.
     uint32_t start_index = 3;
+
+    // The free page id manager page id.
     uint32_t free_top = 2;
     uint32_t null_index = PAGEIDNULL;
-
+    
+    /* 
+     * System page id:
+     * 
+     * 0: for db info.
+     * 1: for page directory.
+     * 2: for free page id manager.
+     */
     for (int i = 0; i < 3; i ++) {
-        page_init(blocks[i]->page, 4, i, PAGEIDNULL);
+        if (i == 1)
+            page_init(blocks[i]->page, PAGEDIRENTRYSIZE, i, PAGEIDNULL);
+        else
+            page_init(blocks[i]->page, 4, i, PAGEIDNULL);
+
         DIRTYSET(&blocks[i]->flags);
     }
+    pm->page_dir_tail = 1;
 
+    /*
+     * DB info page:
+     * 
+     * 0: record current used max page id. 
+     * 1: record free page id manager page id.
+     * 2: record tail of page dir.
+     */
     p_entry_insert(blocks[DBINFOINDEX]->page, (char*)&start_index, sizeof(uint32_t));
     p_entry_insert(blocks[DBINFOINDEX]->page, (char*)&free_top, sizeof(uint32_t));
+    p_entry_insert(blocks[DBINFOINDEX]->page, (char*)&pm->page_dir_tail, sizeof(uint32_t));
+
+    // Set free page id manager previous pointer to NULL.
     p_entry_insert(blocks[FPIDTABLEINDEX]->page, (char*)&null_index, sizeof(uint32_t));
 
-    hook_info(pm);
+    hook_info(pm, NULL);
+
+    for (int i = 0; i < 3; i ++) {
+        gnode_s *tmp = gpt_allocate_node(i, blocks[i], GNODEFINISH);
+        avl_node_s *avln = avl_alloc_node(tmp, i);
+        gpt_push(&pm->gpt, avln);
+    }
+
     free(blocks);
 }
 
-void allocate_pages_id(pool_mg_s *pm, disk_mg_s *dm, uint32_t *to, int n) // test pass
+void allocate_pages_id(pool_mg_s *pm, disk_mg_s *dm, uint32_t *to, int n)
 {
     page_s *page = pm->ft_block->page;
     pthread_mutex_lock(&pm->ft_mutex);
@@ -170,7 +197,7 @@ void allocate_pages_id(pool_mg_s *pm, disk_mg_s *dm, uint32_t *to, int n) // tes
                 page_bring_in(dm, prev_id, pm->ft_block);
                 page = pm->ft_block->page;
             }
-        }else{ 
+        }else{
             uint16_t stack_top = page->record_num - 1;
             to[i] = *((uint32_t*)p_entry_read_by_index(page, stack_top));
             p_entry_delete_by_index(page, stack_top);
@@ -179,7 +206,7 @@ void allocate_pages_id(pool_mg_s *pm, disk_mg_s *dm, uint32_t *to, int n) // tes
     pthread_mutex_unlock(&pm->ft_mutex);
 }
 
-void free_pages_id(pool_mg_s *pm, disk_mg_s *dm, uint32_t *from, int n) // test pass
+void free_pages_id(pool_mg_s *pm, disk_mg_s *dm, uint32_t *from, int n)
 {
     page_s *page = pm->ft_block->page;
     uint32_t prev_id;
@@ -236,6 +263,8 @@ pool_mg_s* mp_pool_open(bool init, disk_mg_s *dm)
     pthread_mutex_init(&pool->gpt.gpt_lock, NULL);
     avl_tree_init(&pool->gpt.glist);
 
+    pthread_mutex_init(&pool->ft_mutex, NULL);
+
     page_s *tmp_p = (page_s*)pool->pool;
     block_s *tmp_b = pool->block_header;
     sub_pool_s *temp;
@@ -257,11 +286,12 @@ pool_mg_s* mp_pool_open(bool init, disk_mg_s *dm)
         else
             tmp_b->next_empty = (tmp_b + 1);
         tmp_b->page = tmp_p;
-        tmp_b->state = PAGENOTINPOOL;
+        tmp_b->state = PAGENOTINPOOL; 
         tmp_b->priority = 0;
         tmp_b->flags = 0; 
         tmp_b->reference_count = ATOMIC_VAR_INIT(0);
-        rwlock_init(&(tmp_b->rwlock));
+        pthread_rwlock_init(&tmp_b->rwlock, NULL);
+        // rwlock_init(&(tmp_b->rwlock));
     }
 
     if (init)
@@ -279,7 +309,9 @@ void mp_pool_close(pool_mg_s *pm, disk_mg_s *dm)
     DIRTYSET(&(pm->block_header[DBINFOINDEX].flags));
     p_entry_update_by_index(pm->block_header[DBINFOINDEX].page, (char*)&pm->page_counter, 0);
     p_entry_update_by_index(pm->block_header[DBINFOINDEX].page, (char*)&pm->ft_block->page->page_id, 1);
+    p_entry_update_by_index(pm->block_header[DBINFOINDEX].page, (char*)&pm->page_dir_tail, 2);
 
+    DIRTYSET(&(pm->block_header[FPIDTABLEINDEX].flags));
     for (int i = 0; i < SUBPOOLS; i ++) {
         sys_pool = &pm->sub_pool[i];
         for (int h = 0; h < SUBPOOLBLOCKS; h ++)
@@ -305,7 +337,6 @@ gnode_s* gpt_allocate_node(uint32_t page_id, block_s *b_addr, char state)
 
 avl_node_s* gpt_open_test_and_set(gpt_s *gpt, uint32_t page_id)
 {
-    list_node_s *cur;
     gnode_s *gnode, *new = gpt_allocate_node(page_id, NULL, GNODELOADING);
     ECHECK_MALLOC(new, FILELOCATION);
 
@@ -320,6 +351,12 @@ avl_node_s* gpt_open_test_and_set(gpt_s *gpt, uint32_t page_id)
         gnode = (gnode_s*)avl_tmp->obj;
         if (gnode->state == GNODESWAPPING) {
             tmp = gnode->block;
+
+            /* 
+             * For Defensive Programming, need add a time counter for
+             * waiting, prevent another thread crash let this loop be-
+             * come infinity loop.
+             */
             while(tmp->state != PAGENOTINPOOL);
         }else if (gnode->state == GNODEDESTORY) {
             pthread_mutex_unlock(&gpt->gpt_lock);
@@ -333,7 +370,7 @@ avl_node_s* gpt_open_test_and_set(gpt_s *gpt, uint32_t page_id)
                 add_again = true;
             pthread_mutex_unlock(&gpt->gpt_lock);
             
-            // Waiting block hook 
+            // Waiting block hook
             while (gnode->state == GNODELOADING);
             // After hook increase ref count again
             if (add_again)
@@ -348,9 +385,8 @@ avl_node_s* gpt_open_test_and_set(gpt_s *gpt, uint32_t page_id)
     return avl_new;
 }
 
-avl_node_s* gpt_close_test_and_set(gpt_s *gpt, uint32_t page_id, char state)
+avl_node_s* gpt_close_test_and_set(gpt_s *gpt, uint32_t page_id, char state, bool enforce)
 {
-    list_node_s *cur;
     gnode_s *gnode;
     avl_node_s *avl_tmp;
     int ref = 0;
@@ -363,7 +399,7 @@ avl_node_s* gpt_close_test_and_set(gpt_s *gpt, uint32_t page_id, char state)
             ref = atomic_fetch_sub(&gnode->block->reference_count, 1);
         else
             ref = atomic_load(&gnode->block->reference_count);
-        if (ref == 1) {
+        if (ref == 1 || enforce) {
             gnode->state = state;
             pthread_mutex_unlock(&gpt->gpt_lock);
             return avl_tmp;
@@ -429,12 +465,12 @@ block_s** mp_pages_create(pool_mg_s *pm, disk_mg_s *dm, int n)
     avl_node_s *a_node;
     uint32_t pages_id[n];
 
-    for (int i = 1; i < SUBPOOLS; i ++) {
+    for (int i = 0; i < SUBPOOLS; i ++) {
         blocks = spm_allocate_blocks(&pm->sub_pool[i], n);
         if (blocks) break;
     }
     if (!blocks) return NULL;
-
+    
     allocate_pages_id(pm, dm, pages_id, n);
 
     for (int i = 0; i < n; i ++) {
@@ -457,14 +493,13 @@ block_s** mp_pages_create(pool_mg_s *pm, disk_mg_s *dm, int n)
  * Use to delete the page is in memory.
  * mp_pages_delete assume those pages is in same sub pool !
  */
-void mp_page_mdelete(pool_mg_s *pm, disk_mg_s *dm, block_s *block) // !!
+void mp_page_mdelete(pool_mg_s *pm, disk_mg_s *dm, block_s *block)
 {
     uint32_t page_id = block->page->page_id;
-    avl_node_s *a_node = gpt_close_test_and_set(&pm->gpt, page_id, GNODESWAPPING);
+    avl_node_s *a_node = gpt_close_test_and_set(&pm->gpt, page_id, GNODEDESTORY, false);
     gnode_s *gnode = (a_node) ? (gnode_s*)a_node->obj : NULL;
 
-    if (!gnode)
-        return;
+    if (!gnode) return;
 
     int spm_index = get_block_spm_index(pm, block);
 
@@ -479,12 +514,28 @@ void mp_page_mdelete(pool_mg_s *pm, disk_mg_s *dm, block_s *block) // !!
  * mp_page_ddelete
  *
  * Use to delete the page is in disk.
- * Direct free page id, so the page is still in disk, it
- * will cover by next write !
+ * Direct free page id, so the page is still in disk, the
+ * page it will cover by next write !
  */
 void mp_page_ddelete(pool_mg_s *pm, disk_mg_s *dm, uint32_t page_id)
 {
     free_pages_id(pm, dm, &page_id, 1);
+}
+
+void mp_page_close(pool_mg_s *pm, disk_mg_s *dm, block_s *block, bool enforce)
+{
+    uint32_t page_id = block->page->page_id;
+    avl_node_s *a_node = gpt_close_test_and_set(&pm->gpt, page_id, GNODESWAPPING, enforce);
+    gnode_s *gnode = (a_node) ? (gnode_s*)a_node->obj : NULL;
+
+    if (!gnode) return;
+
+    int spm_index = get_block_spm_index(pm, block);
+    page_swap_out(dm, block);
+    block->state = PAGENOTINPOOL;
+    spm_free_block(&pm->sub_pool[spm_index], block);
+    gpt_remove(&pm->gpt, a_node);
+    free(gnode);
 }
 
 /*
@@ -494,8 +545,6 @@ void mp_page_ddelete(pool_mg_s *pm, disk_mg_s *dm, uint32_t page_id)
 block_s* mp_page_open(pool_mg_s *pm, disk_mg_s *dm, uint32_t page_id)
 {
     block_s *block;
-    bool gnode_exist = false;
-    char state;
     avl_node_s *a_node = gpt_open_test_and_set(&pm->gpt, page_id);
     gnode_s *gnode = (a_node) ? (gnode_s*)a_node->obj : NULL;
 
@@ -534,41 +583,40 @@ block_s* mp_page_open(pool_mg_s *pm, disk_mg_s *dm, uint32_t page_id)
     return block;
 }
 
-void mp_page_close(pool_mg_s *pm, disk_mg_s *dm, block_s *block)
+void mp_page_sync(pool_mg_s *pm, disk_mg_s *dm, block_s *block)
 {
-    uint32_t page_id = block->page->page_id;
-    avl_node_s *a_node = gpt_close_test_and_set(&pm->gpt, page_id, GNODESWAPPING);
-    gnode_s *gnode = (a_node) ? (gnode_s*)a_node->obj : NULL;
+     
+}
 
-    if (!gnode) return;
-    
-    int spm_index = get_block_spm_index(pm, block);
-    page_swap_out(dm, block);
-    block->state = PAGENOTINPOOL;
-    spm_free_block(&pm->sub_pool[spm_index], block);
-    gpt_remove(&pm->gpt, a_node);
-    free(gnode);
+char mp_schedular(pool_mg_s *pm , disk_mg_s *dm, int need)
+{
+    return '\0';
+}
+
+char sys_schedular(pool_mg_s *pm, disk_mg_s *dm, int need)
+{
+    return '\0';
 }
 
 /*
  * Page rwlock Interface
  */
-bool mp_require_page_rlock(pool_mg_s *pm, block_s *block)
+int mp_require_page_rlock(block_s *block)
 {
-    return r_rwlock(&(block->rwlock));
+    return pthread_rwlock_rdlock(&block->rwlock);
 }
 
-void mp_release_page_rlock(pool_mg_s *pm, block_s *block)
+int mp_release_page_rlock(block_s *block)
 {
-    r_unrwlock(&(block->rwlock));
+    return pthread_rwlock_unlock(&block->rwlock);
 }
 
-bool mp_require_page_wlock(pool_mg_s *pm, block_s *block)
+int mp_require_page_wlock(block_s *block)
 {
-    return w_rwlock(&(block->rwlock));
+    return pthread_rwlock_wrlock(&block->rwlock);
 }
 
-void mp_release_page_wlock(pool_mg_s *pm, block_s *block)
+int mp_release_page_wlock(block_s *block)
 {
-    w_unrwlock(&(block->rwlock));
-}
+    return pthread_rwlock_unlock(&block->rwlock);
+} 

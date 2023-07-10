@@ -1,10 +1,8 @@
-#include <pthread.h>
 #include <stdbool.h>
-#include <stdint.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
-#include "./hash_tabla.h"
+#include "./hash_table.h"
 
 djb2_hash_s* djb2_hash_create(int buckets)
 {

@@ -1,7 +1,8 @@
-#include "../../include/net.h"
 #include <stdio.h>
 #include <sys/socket.h>
 #include <unistd.h>
+#include "../../include/net.h"
+#include "../../include/cmd.h"
 
 int tcp_listen(const char *host, const char *serv, socklen_t *addrlenp)
 {
@@ -15,7 +16,6 @@ int tcp_listen(const char *host, const char *serv, socklen_t *addrlenp)
 	hints.ai_socktype = SOCK_STREAM;    /* for tcp */
 
 	if ( (n = getaddrinfo(host, serv, &hints, &res)) != 0) {
-
     }
 
 	ressave = res;
@@ -25,7 +25,6 @@ int tcp_listen(const char *host, const char *serv, socklen_t *addrlenp)
 			continue;		/* error, try next one */
 
         if (setsockopt(listenfd, SOL_SOCKET, SO_REUSEADDR, &on, sizeof(on)) < 0) {
-
         }
 
         /*  
@@ -38,11 +37,9 @@ int tcp_listen(const char *host, const char *serv, socklen_t *addrlenp)
 	}
 
 	if (!res) {	/* errno from final socket() or bind() */
-    
     }
 
 	if (listen(listenfd, LISTENQ) < 0) {
-
     }
 
 	if (addrlenp)
@@ -55,7 +52,6 @@ void connmg_init(conn_manager_s *connmg)
 {
 	for (int i = 0; i < MAX_CONNECTIONS; i ++)
 		connmg->conn_table[i] = NULL;
-	
 	connmg->connection = 0;
 	connmg->tesk_pool = tpool_create(32);
 }
@@ -78,7 +74,6 @@ void conn_close(conn_info_s *conn)
 	close(conn->fd);
 
 	// do somehting need for close.
-
 	connmg->connection --;
 	free(conn);
 }
@@ -86,26 +81,19 @@ void conn_close(conn_info_s *conn)
 void* exec(void *args)
 {
 	conn_info_s *conn = (conn_info_s*)args;
-
 	conn_manager_s *connmg = conn->sysarg->connmg;
-	int re_by_recv, cfd = conn->fd;
 	char cmd[MAX_CMDLEN];
+	int re_by_recv, cfd = conn->fd;
 
 	re_by_recv = recv(cfd, cmd, MAX_CMDLEN, 0);
-
 	if (re_by_recv <= 0) {
 		if (re_by_recv == -1) {
 			// err handler
 		}else
 			conn_close(connmg->conn_table[cfd - SYSRESERVFD]);
-	}else{
-		// send(cfd, "Accept!\n", strlen("Accept!\n"), 0);
-		// close(cfd);
-
-
-		// execute cmd
-	}
-
+	}else
+		executer(conn, cmd);
+	
 	return NULL;
 }
 
@@ -121,8 +109,6 @@ int db_active(disk_mg_s *dm, pool_mg_s *pm, conn_manager_s *connmg, char *port)
 	sysarg.pm = pm;
 	sysarg.connmg = connmg;
 
-	/* Code to set up listening socket, 'listen_sock',
-		(socket(), bind(), listen()) omitted */
 	listen_sock = tcp_listen(NULL, port, NULL);
 	flags = fcntl(listen_sock, F_GETFL);
 	fcntl(listen_sock, F_SETFL, flags | O_NONBLOCK);
@@ -161,16 +147,7 @@ int db_active(disk_mg_s *dm, pool_mg_s *pm, conn_manager_s *connmg, char *port)
 					close(cfd);
 				}else{
 					// set conn_sock NON_BLOCKING
-					flags = fcntl(conn_sock, F_GETFL);
-					fcntl(conn_sock, F_SETFL, flags | O_NONBLOCK);
-					ev.events = EPOLLIN | EPOLLET;
-					ev.data.fd = conn_sock;
-					if (epoll_ctl(epollfd, EPOLL_CTL_ADD, conn_sock, &ev) == -1) {
-						perror("epoll_ctl: conn_sock");
-						exit(EXIT_FAILURE);
-					}
-					connmg->conn_table[conn_sock - SYSRESERVFD] = conn_create(&sysarg, conn_sock);
-					connmg->connection ++;
+ 
 				}
 			}else{
 				future = tpool_apply(connmg->tesk_pool, exec, (void*)connmg->conn_table[cfd - SYSRESERVFD]);

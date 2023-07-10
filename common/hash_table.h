@@ -1,7 +1,7 @@
 #ifndef HASH_TABLE_H
 #define HASH_TABLE_H
 
-#include "./lllq.h"
+#include <pthread.h>
 #include <stdint.h>
 
 typedef struct djb2_hash djb2_hash_s;
