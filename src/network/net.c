@@ -1,8 +1,13 @@
+#include <asm-generic/errno-base.h>
+#include <errno.h>
 #include <stdio.h>
+#include <sys/epoll.h>
 #include <sys/socket.h>
 #include <unistd.h>
 #include "../../include/net.h"
 #include "../../include/cmd.h"
+
+static sys_args_s sysargs;
 
 int tcp_listen(const char *host, const char *serv, socklen_t *addrlenp)
 {
@@ -56,23 +61,28 @@ void connmg_init(conn_manager_s *connmg)
 	connmg->tesk_pool = tpool_create(32);
 }
 
-conn_info_s* conn_create(sys_args_s *sysarg, int fd)
+conn_info_s* conn_create(int fd)
 {
 	conn_info_s *conninfo = (conn_info_s*)malloc(sizeof(conn_info_s));
 	if (!conninfo) {
 		// err handler
 	}
-	conninfo->sysarg = sysarg;
 	conninfo->fd = fd;
 	return conninfo;
 }
 
 void conn_close(conn_info_s *conn)
 {
-	conn_manager_s *connmg = conn->sysarg->connmg;
+	conn_manager_s *connmg = sysargs.connmg;
 	connmg->conn_table[conn->fd - SYSRESERVFD] = NULL;
-	close(conn->fd);
 
+	if (epoll_ctl(connmg->epoll_fd, EPOLL_CTL_ADD, conn->fd, NULL) == -1) {
+		perror("epoll_ctl: listen_sock");
+		exit(EXIT_FAILURE);
+	}	
+
+	close(conn->fd);
+	
 	// do somehting need for close.
 	connmg->connection --;
 	free(conn);
@@ -81,18 +91,19 @@ void conn_close(conn_info_s *conn)
 void* exec(void *args)
 {
 	conn_info_s *conn = (conn_info_s*)args;
-	conn_manager_s *connmg = conn->sysarg->connmg;
+	conn_manager_s *connmg = sysargs.connmg;
 	char cmd[MAX_CMDLEN];
 	int re_by_recv, cfd = conn->fd;
 
 	re_by_recv = recv(cfd, cmd, MAX_CMDLEN, 0);
+	printf("--> from: %d, msg: %s\n", conn->fd, cmd);
 	if (re_by_recv <= 0) {
 		if (re_by_recv == -1) {
 			// err handler
 		}else
 			conn_close(connmg->conn_table[cfd - SYSRESERVFD]);
 	}else
-		executer(conn, cmd);
+		executer(&sysargs, conn, cmd);
 	
 	return NULL;
 }
@@ -104,23 +115,25 @@ int db_active(disk_mg_s *dm, pool_mg_s *pm, conn_manager_s *connmg, char *port)
 	socklen_t addrlen;
 	struct sockaddr_storage	connaddr;
 	tpool_future_t future;
-	sys_args_s sysarg;
-	sysarg.dm = dm;
-	sysarg.pm = pm;
-	sysarg.connmg = connmg;
+	char *buf;
+
+	sysargs.dm = dm;
+	sysargs.pm = pm;
+	sysargs.connmg = connmg;
 
 	listen_sock = tcp_listen(NULL, port, NULL);
 	flags = fcntl(listen_sock, F_GETFL);
 	fcntl(listen_sock, F_SETFL, flags | O_NONBLOCK);
 
 	epollfd = epoll_create1(0);
+	connmg->epoll_fd = epollfd;
 	
 	if (epollfd == -1) {
 		perror("epoll_create1");
 		exit(EXIT_FAILURE);
 	}
 
-	ev.events = EPOLLIN;
+	ev.events = EPOLLIN | EPOLLET;
 	ev.data.fd = listen_sock;
 	if (epoll_ctl(epollfd, EPOLL_CTL_ADD, listen_sock, &ev) == -1) {
 		perror("epoll_ctl: listen_sock");
@@ -133,6 +146,7 @@ int db_active(disk_mg_s *dm, pool_mg_s *pm, conn_manager_s *connmg, char *port)
 			perror("epoll_wait");
 			exit(EXIT_FAILURE);
 		}
+
 		for (int n = 0; n < nfds; n ++) {
 			int cfd = events[n].data.fd;
 			if (cfd == listen_sock) {
@@ -140,14 +154,32 @@ int db_active(disk_mg_s *dm, pool_mg_s *pm, conn_manager_s *connmg, char *port)
 				if (conn_sock == -1) {
 					perror("accept");
 					exit(EXIT_FAILURE);
-				}
-				if (cfd >= FDLIMIT) {
-					char *buf = "Server is busy, please connect again later ...";
-					send(cfd, buf, strlen(buf), 0);
-					close(cfd);
 				}else{
-					// set conn_sock NON_BLOCKING
- 
+					if (cfd >= FDLIMIT) {
+						buf = "Server is busy, please connect again later ...";
+						send(conn_sock, buf, strlen(buf), 0);
+						close(conn_sock);
+					}else{
+						// set conn_sock NON_BLOCKING
+						flags = fcntl(conn_sock, F_GETFL);
+						fcntl(conn_sock, F_SETFL, flags | O_NONBLOCK);
+
+						ev.events = EPOLLIN | EPOLLET;
+                       	ev.data.fd = conn_sock;
+
+						if (epoll_ctl(epollfd, EPOLL_CTL_ADD, conn_sock, &ev) == -1) {
+							perror("epoll_ctl: listen_sock");
+							exit(EXIT_FAILURE);
+						}
+
+						conn_info_s *conn = conn_create(conn_sock);
+						if (!conn) {
+							// err handler, for conn create fail.
+						}
+						connmg->conn_table[conn_sock  - SYSRESERVFD] = conn;
+						buf = "binding\n";
+						send(conn_sock, buf, strlen(buf), 0);
+					}
 				}
 			}else{
 				future = tpool_apply(connmg->tesk_pool, exec, (void*)connmg->conn_table[cfd - SYSRESERVFD]);

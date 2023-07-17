@@ -201,6 +201,5 @@ void page_init(page_s *page, uint16_t width, uint32_t id, uint32_t next_id)
     int loop = get_max_entries(page->data_width);
     for (uint16_t i = 0; i < loop-1; i ++)
         *(slot_map - i) = (i+1);
-
     update_checksum(page);
 }

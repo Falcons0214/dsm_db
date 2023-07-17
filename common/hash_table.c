@@ -47,26 +47,23 @@ inline unsigned long __hash(char *str)
     return hash;
 }
 
-int djb2_search(djb2_hash_s *hash, char *str)
+block_s* djb2_search(djb2_hash_s *hash, char *str)
 {
     unsigned long hash_value = __hash(str);
     int bucket_index = hash_value % hash->buckets;
-    int exist = -1;
     djb2_node_s *cur = hash->hash_table[bucket_index];
 
     pthread_mutex_lock(&hash->mlock_table[bucket_index]);
     while(cur) {
-        if (!strcmp(cur->table_name, str)) {
-            exist = cur->page_id;
-            break;
-        }
+        if (!strcmp(cur->table_name, str))
+            return cur->tblock;
         cur = cur->next;
     }
     pthread_mutex_unlock(&hash->mlock_table[bucket_index]);
-    return exist;
+    return NULL;
 }
 
-bool djb2_push(djb2_hash_s *hash, char *str, uint32_t page_id)
+bool djb2_push(djb2_hash_s *hash, char *str, block_s *block)
 {
     unsigned long hash_value = __hash(str);
     int bucket_index = hash_value % hash->buckets;
@@ -78,7 +75,7 @@ bool djb2_push(djb2_hash_s *hash, char *str, uint32_t page_id)
     }
 
     n->table_name = str;
-    n->page_id = page_id;
+    n->tblock = block;
 
     pthread_mutex_lock(&hash->mlock_table[bucket_index]);
     if (!hash->hash_table[bucket_index])

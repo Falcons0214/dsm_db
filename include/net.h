@@ -14,7 +14,9 @@
 #include <sys/types.h>
 #include <string.h>
 
+#include "../common/linklist.h"
 #include "../common/threadpool.h"
+#include "block.h"
 #include "disk.h"
 #include "pool.h"
 
@@ -35,10 +37,16 @@ struct sys_args
     conn_manager_s *connmg;
 };
 
+struct mnode
+{
+    list_node_s link;
+    block_s *block;
+};
+
 struct conn_info
 {
-    sys_args_s *sysarg;
     int fd;
+    list_s modift_list;
 };
 
 struct conn_manager
@@ -46,6 +54,8 @@ struct conn_manager
     conn_info_s *conn_table[MAX_CONNECTIONS];
     int connection;
 
+    int epoll_fd;
+    
     tpool_t tesk_pool;
 };
 
@@ -54,9 +64,7 @@ void* exec(void*);
 int db_active(disk_mg_s*, pool_mg_s*, conn_manager_s*, char*);
 
 void connmg_init(conn_manager_s *connmg);
-conn_info_s* conn_create(sys_args_s*, int);
-void conn_init(conn_info_s*);
+conn_info_s* conn_create(int);
 void conn_close(conn_info_s*);
-
 
 #endif /* NET_H */
