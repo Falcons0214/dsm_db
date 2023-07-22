@@ -4,10 +4,10 @@
 // #include "../common/threadpool.h"
 // #include "../common/linklist.h"
 #include "../common/avl.h"
+#include "../common/hash_table.h"
 #include "./block.h"
 #include "./page.h"
 #include "./disk.h"
-#include <bits/pthreadtypes.h>
 #include <stdbool.h>
 #include <pthread.h>
 #include <stdint.h>
@@ -81,6 +81,11 @@ struct pool_mg
      * Pointer to the tail of page directory list.
      */
     uint32_t page_dir_tail;
+
+    /*
+     * Record those table already loagd in memroy. 
+     */
+    djb2_hash_s *hash_table;
 
     /*
      * Page ID Manager:

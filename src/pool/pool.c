@@ -265,6 +265,11 @@ pool_mg_s* mp_pool_open(bool init, disk_mg_s *dm)
 
     pthread_mutex_init(&pool->ft_mutex, NULL);
 
+    pool->hash_table = djb2_hash_create(256);
+    if (pool->hash_table) {
+        // err handler, for hash table create fail.
+    }
+
     page_s *tmp_p = (page_s*)pool->pool;
     block_s *tmp_b = pool->block_header;
     sub_pool_s *temp;
@@ -317,6 +322,7 @@ void mp_pool_close(pool_mg_s *pm, disk_mg_s *dm)
         for (int h = 0; h < SUBPOOLBLOCKS; h ++)
             page_swap_out(dm, &sys_pool->buf_list[h]);
     }
+    djb2_hash_free(pm->hash_table);
     free(pm->block_header);
     free(pm->pool);
     free(pm);

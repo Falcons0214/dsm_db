@@ -7,17 +7,18 @@
 #include "./db.h"
 #include "./block.h"
 
+#define TABLEINFOATTR "table_info"
+
 bool insert_table_in_pdir(pool_mg_s*, disk_mg_s*, char*, uint32_t);
-bool remove_table_from_pdir(pool_mg_s*, disk_mg_s*, char*);
-block_s* search_table_from_pdir(pool_mg_s*, disk_mg_s*, char*);
+bool remove_table_from_pdir(pool_mg_s*, disk_mg_s*, char*, uint32_t*);
+block_s* search_table_from_pdir(pool_mg_s*, disk_mg_s*, char*, uint32_t *page_id);
 
 /*
  * Table
  */
-void db_open_table(pool_mg_s*, disk_mg_s*, uint32_t);
+block_s* db_open_table(pool_mg_s*, disk_mg_s*, char*, char**);
 void db_close_table(pool_mg_s*, disk_mg_s*, uint32_t);
-bool db_create_table(pool_mg_s*, disk_mg_s*, char*, char**);
-void db_delete_table(pool_mg_s*, disk_mg_s*);
+bool db_create_table(pool_mg_s*, disk_mg_s*, char*, char**, int*);
 
 /*
  * Column
@@ -33,5 +34,27 @@ void db_read_row_from_table(pool_mg_s*);
 void db_insert_row_in_table(pool_mg_s*);
 void db_delete_row_from_table(pool_mg_s*);
 void db_update_row_in_table(pool_mg_s*);
+
+/*
+ * High level API
+ * 
+ * t: for general table
+ * i: for index
+ */
+// void db_1_primary_key_set(pool_mg_s*);
+void db_1_tcraete(pool_mg_s*, disk_mg_s*, char*, char**, int*);
+void db_1_topen(pool_mg_s*, disk_mg_s*, char*);
+void db_1_tdelete(pool_mg_s*, disk_mg_s*, char*);
+void db_1_icreate(pool_mg_s*, disk_mg_s*, char*, char**, int*);
+void db_1_iopen(pool_mg_s*, disk_mg_s*, char*);
+void db_1_idelete(pool_mg_s*, disk_mg_s*, char*);
+
+void db_1_tread(pool_mg_s*, disk_mg_s*, char*, char**, int);
+void db_1_tinsert(pool_mg_s*, disk_mg_s*, char*, char**);
+void db_1_tremove(pool_mg_s*, disk_mg_s*, char*, char**);
+
+void db_1_iread(pool_mg_s*, disk_mg_s*, char*, char**, int);
+void db_1_iinsert(pool_mg_s*, disk_mg_s*, char*, char**);
+void db_1_iremove(pool_mg_s*, disk_mg_s*, char*, char**);
 
 #endif /* INTERFACE_H */

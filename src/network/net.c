@@ -1,4 +1,5 @@
 #include <asm-generic/errno-base.h>
+#include <asm-generic/socket.h>
 #include <errno.h>
 #include <stdio.h>
 #include <sys/epoll.h>
@@ -6,7 +7,11 @@
 #include <unistd.h>
 #include "../../include/net.h"
 #include "../../include/cmd.h"
+#include "../../include/wrap.h"
 
+/*
+ * Structure for hook system information.
+ */
 static sys_args_s sysargs;
 
 int tcp_listen(const char *host, const char *serv, socklen_t *addrlenp)
@@ -81,9 +86,9 @@ void conn_close(conn_info_s *conn)
 		exit(EXIT_FAILURE);
 	}	
 
-	close(conn->fd);
-	
 	// do somehting need for close.
+
+	close(conn->fd);
 	connmg->connection --;
 	free(conn);
 }
@@ -94,9 +99,10 @@ void* exec(void *args)
 	conn_manager_s *connmg = sysargs.connmg;
 	char cmd[MAX_CMDLEN];
 	int re_by_recv, cfd = conn->fd;
-
+	
 	re_by_recv = recv(cfd, cmd, MAX_CMDLEN, 0);
-	printf("--> from: %d, msg: %s\n", conn->fd, cmd);
+
+	printf("--> %d\n", re_by_recv);
 	if (re_by_recv <= 0) {
 		if (re_by_recv == -1) {
 			// err handler
@@ -117,11 +123,21 @@ int db_active(disk_mg_s *dm, pool_mg_s *pm, conn_manager_s *connmg, char *port)
 	tpool_future_t future;
 	char *buf;
 
+	/*
+	 * Hook system args.
+	 */
 	sysargs.dm = dm;
 	sysargs.pm = pm;
 	sysargs.connmg = connmg;
 
 	listen_sock = tcp_listen(NULL, port, NULL);
+
+	// int buffer_len = 512;
+	// setsockopt(listen_sock, SOL_SOCKET, SO_SNDBUF, (void*)&buffer_len, buffer_len);
+
+	/*
+	 * Set listen socket to Non-blocking mode. 
+	 */
 	flags = fcntl(listen_sock, F_GETFL);
 	fcntl(listen_sock, F_SETFL, flags | O_NONBLOCK);
 
@@ -149,6 +165,14 @@ int db_active(disk_mg_s *dm, pool_mg_s *pm, conn_manager_s *connmg, char *port)
 
 		for (int n = 0; n < nfds; n ++) {
 			int cfd = events[n].data.fd;
+			/*
+			 * If cfd equal listen socket, mean's we have new connection coming.
+			 * For new connection, we need create corresponding structure(conn_info_s),
+			 * for maintain connection.
+			 * 
+			 * If cfd not equal listen socket, mean's we have request from client,
+			 * and we push this request in thread pool waiting queue.
+			 */
 			if (cfd == listen_sock) {
 				conn_sock = accept(listen_sock, (struct sockaddr *)&connaddr, &addrlen);
 				if (conn_sock == -1) {
@@ -156,11 +180,13 @@ int db_active(disk_mg_s *dm, pool_mg_s *pm, conn_manager_s *connmg, char *port)
 					exit(EXIT_FAILURE);
 				}else{
 					if (cfd >= FDLIMIT) {
-						buf = "Server is busy, please connect again later ...";
+						buf = SYSTEMBUSY;
 						send(conn_sock, buf, strlen(buf), 0);
 						close(conn_sock);
 					}else{
-						// set conn_sock NON_BLOCKING
+						/*
+						 * Set conn_sock to Non-blocking mode.
+						 */
 						flags = fcntl(conn_sock, F_GETFL);
 						fcntl(conn_sock, F_SETFL, flags | O_NONBLOCK);
 
@@ -177,7 +203,7 @@ int db_active(disk_mg_s *dm, pool_mg_s *pm, conn_manager_s *connmg, char *port)
 							// err handler, for conn create fail.
 						}
 						connmg->conn_table[conn_sock  - SYSRESERVFD] = conn;
-						buf = "binding\n";
+						buf = BINDINGAC;
 						send(conn_sock, buf, strlen(buf), 0);
 					}
 				}

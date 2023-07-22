@@ -13,16 +13,13 @@
 
 #define FILELOCATION "src/disk/disk.c"
 
-// uncheck, may accessed by multi thread
 uint32_t dk_read_page_by_pid(disk_mg_s *dm, uint32_t page_id, void *to)
 {
     off_t result_offset;
     off_t read_start = PAGESIZE * page_id;
     ssize_t readn;
 
-#ifdef PREAD_AVAILABLE
-    readn = pread(dm->db_fd, (char*)to, PAGESIZE, PAGESIZE * page_id);
-#else
+READAGAIN:
     pthread_mutex_lock(&dm->db_lock);
     result_offset = lseek(dm->db_fd, read_start, SEEK_SET);
 
@@ -30,25 +27,28 @@ uint32_t dk_read_page_by_pid(disk_mg_s *dm, uint32_t page_id, void *to)
 
     readn = read(dm->db_fd, (char*)to, PAGESIZE);
     pthread_mutex_unlock(&dm->db_lock);
-#endif
+
+    if (((page_s*)to)->page_id != page_id)
+        goto READAGAIN;
+
     return (readn != PAGESIZE) ? DKREADINCOMP : DKREADACCEPT;
 }
 
-//uncheck, may accessed by multi thread
 uint32_t dk_write_page_by_pid(disk_mg_s *dm, uint32_t page_id, void *from)
 {
     off_t result_offset;
     off_t write_start = PAGESIZE * page_id;
+    ssize_t writen;
 
     pthread_mutex_lock(&dm->db_lock);
     result_offset = lseek(dm->db_fd, write_start, SEEK_SET);
 
     if (result_offset == -1) ECHECK_SEEK(FILELOCATION);
     
-    ssize_t writen = write(dm->db_fd, (char*)from, PAGESIZE);
+    writen = write(dm->db_fd, (char*)from, PAGESIZE);
     pthread_mutex_unlock(&dm->db_lock);
 
-    printf("Writen:  %zd, Page id: %d\n", writen, page_id);
+    // printf("Writen:  %zd, Page id: %d\n", writen, page_id);
     return (writen != PAGESIZE) ? DKWRITEINCOMP : DKWRITEACCEPT;
 }
 
@@ -60,40 +60,6 @@ uint32_t dk_read_pages_by_pid(disk_mg_s *dm, uint32_t *pages_id, char **pages, i
 uint32_t dk_write_pages_by_pid(disk_mg_s *dm, uint32_t *pages_id, char **pages, int n)
 {
     return DKWRITEINCOMP;
-}
-
-uint32_t dk_read_continues_pages(disk_mg_s *dm, uint32_t pid_start, uint32_t pid_end, void *to)
-{
-    off_t result_offset;
-    off_t read_start = PAGESIZE * pid_start;
-    int diff = pid_end - pid_start;
-
-    result_offset = lseek(dm->db_fd, read_start, SEEK_SET);
-
-    if (result_offset == -1)
-        ECHECK_SEEK(FILELOCATION);
-    
-    ssize_t readn = read(dm->db_fd, (page_s*)to, diff);
-    if (readn != (PAGESIZE * diff))
-        return DKREADINCOMP;
-    return DKREADACCEPT;
-}
-
-uint32_t dk_write_continues_pages(disk_mg_s *dm, uint32_t pid_start, uint32_t pid_end, void *from)
-{
-    off_t result_offset;
-    off_t write_start = PAGESIZE * pid_start;
-    int diff = pid_end - pid_start;
-
-    result_offset = lseek(dm->db_fd, write_start, SEEK_SET);
-
-    if (result_offset == -1)
-        ECHECK_SEEK(FILELOCATION);
-    
-    ssize_t writen = write(dm->db_fd, (page_s*)from, diff);
-    if (writen != (PAGESIZE * diff))
-        return DKWRITEINCOMP;
-    return DKWRITEACCEPT;
 }
 
 void db_install(disk_mg_s *dm)

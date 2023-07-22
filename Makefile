@@ -1,48 +1,49 @@
 CC = clang
-LIBSTT = -pthread -lm 
+LIBSTT = -pthread -lm
 LIBS = -pthread
-CFLAGS = -Wall ${LIBSTT} -std=c11
+CFLAGS = -Wall ${LIBSTT}
 
 SRC = ./src
 INCLUDE = ./include
 COMMON = ./common
 TEST = ./test
+DBTEST = ./dbtest
 
 DISK = ${SRC}/disk
 ERROR = ${SRC}/error
 LATCH = ${SRC}/latch
 POOL = ${SRC}/pool
+NET = ${SRC}/network
+INTER = ${SRC}/interface
+CMD = ${SRC}/cmd
+MUNIT = ./munit
 
 %.o: %.c
-	$(CC) -o $@ -c $< $(CFLAGS)
+	${CC} -o $@ -c $< ${CFLAGS}
 
-# below for test
 test_template = ${CC} -o ${TEST}/$@ $^ ${CFLAGS}
 
-	
-t1: ${COMMON}/linklist.o ${ERROR}/error.o ${TEST}/t1.c
-	${test_template}
+net_test:   ${NET}/net.o ${COMMON}/threadpool.o \
+			${CMD}/cmd.o ${NET}/wrap.o \
+			${DBTEST}/net_test.c
+			${test_template}
 
-pagetest: ${DISK}/page.o ${TEST}/pagetest.c
-	${test_template}
+pool_credel_test: 	${ERROR}/error.o ${COMMON}/avl.o \
+					${DISK}/page.o ${DISK}/disk.o ${POOL}/pool.o \
+					${MUNIT}/munit.o ${DBTEST}/pool_credel_test.c
+					${test_template}
 
-pooltest: ${ERROR}/error.o ${COMMON}/avl.o ${LATCH}/rwlock.o \
+pagetest: 	${DISK}/page.o ${TEST}/pagetest.c
+			${test_template}
+
+pooltest: ${ERROR}/error.o ${COMMON}/avl.o ${COMMON}/hash_table.o \
 	 	  ${DISK}/page.o ${DISK}/disk.o ${POOL}/pool.o \
-		  ${TEST}/pooltest.c
-	${test_template}
+		  ${INTER}/interface.o  ${TEST}/pooltest.c
+		  ${test_template}
 
-tpooltest: ${COMMON}/threadpool.o ${TEST}/tpooltest.c
-	${test_template}
+tpooltest:	${COMMON}/threadpool.o ${TEST}/tpooltest.c
+			${test_template}
 
-rqtest: ${COMMON}/rqueue.o ${TEST}/rqtest.c
-	${test_template}
-
-lllqtest: ${COMMON}/lllq.o ${TEST}/lllqtest.c
-	${test_template}
-
-pairtest: ${COMMON}/pair.o ${TEST}/pairtest.c
-	${test_template}
-
-avltest: ${COMMON}/avl.o ${TEST}/avltest.c
-	${test_template}
+avltest: 	${COMMON}/avl.o ${TEST}/avltest.c
+		 	${test_template}
 
