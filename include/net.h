@@ -30,6 +30,8 @@ typedef struct conn_manager conn_manager_s;
 #define FDLIMIT MAX_CONNECTIONS + SYSRESERVFD
 #define LISTENQ 1024
 
+#define CHUNKSIZE 4096
+
 #define SYSTEMBUSY "Server is busy, please connect again later ..."
 #define BINDINGAC "binding\n"
 

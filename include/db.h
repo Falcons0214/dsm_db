@@ -10,7 +10,14 @@
 #define RTABLEENYRTSIZE ATTRSIZE + 4
 #define PAGEDIRENTRYSIZE PAGEDIRNAMESIZE + 4
 
-#define TABLEATTRSLIMIT 119 // --> page size / (RTABLEENTRYSIZE + SLOTSIZE)
+#define TABLEATTRSLIMIT 119 - 1 // --> page size / (RTABLEENTRYSIZE + SLOTSIZE)
+
+/*
+ * table info page layout:
+ */
+#define ATTRSNUM 0
+#define RECORDNUM 1
+#define PRIKEYIDEN 2
 
 struct db_s
 {

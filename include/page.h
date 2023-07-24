@@ -10,7 +10,7 @@ typedef struct page page_s;
 /*
  * Page Id 
  */
-#define PAGEIDNULL 0xffffffff 
+#define PAGEIDNULL 0xffffffff
 
 /*
  * Page & Page Header size
@@ -90,7 +90,7 @@ struct page
 #define P_ENTRY_EXCEEDENTRYLIMIT 0xbfff
 
 // for system
-inline int get_max_entries(uint16_t);
+int get_max_entries(uint16_t);
 inline char* get_page_data_table_addr(page_s*);
 inline char* get_page_data_entry_addr(page_s*, uint16_t);
 inline bool is_page_full(page_s*);
