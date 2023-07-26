@@ -55,8 +55,10 @@ block_s* djb2_search(djb2_hash_s *hash, char *str)
 
     pthread_mutex_lock(&hash->mlock_table[bucket_index]);
     while(cur) {
-        if (!strcmp(cur->table_name, str))
+        if (!strcmp(cur->table_name, str)) {
+            pthread_mutex_unlock(&hash->mlock_table[bucket_index]);
             return cur->tblock;
+        }
         cur = cur->next;
     }
     pthread_mutex_unlock(&hash->mlock_table[bucket_index]);

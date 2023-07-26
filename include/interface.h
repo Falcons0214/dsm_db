@@ -20,20 +20,6 @@ block_s* search_table_from_pdir(pool_mg_s*, disk_mg_s*, char*, uint32_t *page_id
 void db_close_table(pool_mg_s*, disk_mg_s*, uint32_t);
 bool db_create_table(pool_mg_s*, disk_mg_s*, char*, char**, int, int*);
 
-/*
- * Column
- */
-void db_read_col_from_table(pool_mg_s*);
-void db_insert_col_in_table(pool_mg_s*);
-void db_delele_col_from_table(pool_mg_s*);
-
-/*
- * Element (row)
- */
-void db_read_row_from_table(pool_mg_s*);
-void db_insert_row_in_table(pool_mg_s*);
-void db_delete_row_from_table(pool_mg_s*);
-void db_update_row_in_table(pool_mg_s*);
 
 /*
  * High level function call for table operations
@@ -46,7 +32,7 @@ bool db_1_tcreate(pool_mg_s*, disk_mg_s*, char*, char**, int, int*);
 block_s* db_1_topen(pool_mg_s*, disk_mg_s*, char*);
 bool db_1_tdelete(pool_mg_s*, disk_mg_s*, char*);
 void db_1_tread(pool_mg_s*, disk_mg_s*, int, char*, char**, int);
-void db_1_tinsert(pool_mg_s*, disk_mg_s*, char*, char**);
+bool db_1_tinsert(pool_mg_s*, disk_mg_s*, char*, char**, int*);
 void db_1_tremove(pool_mg_s*, disk_mg_s*, char*, char**);
 void db_1_tschema(pool_mg_s*, disk_mg_s*, int, char*);
 
