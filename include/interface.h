@@ -42,7 +42,7 @@ void db_update_row_in_table(pool_mg_s*);
  * i: for index
  */
 // void db_1_primary_key_set(pool_mg_s*);
-bool db_1_tcraete(pool_mg_s*, disk_mg_s*, char*, char**, int, int*);
+bool db_1_tcreate(pool_mg_s*, disk_mg_s*, char*, char**, int, int*);
 block_s* db_1_topen(pool_mg_s*, disk_mg_s*, char*);
 bool db_1_tdelete(pool_mg_s*, disk_mg_s*, char*);
 void db_1_tread(pool_mg_s*, disk_mg_s*, int, char*, char**, int);

@@ -157,6 +157,10 @@ void init_db_info(pool_mg_s *pm)
     }
     pm->page_dir_tail = 1;
 
+    p_entry_set_pagetype(blocks[0]->page, SYSROOTPAGE);
+    p_entry_set_pagetype(blocks[1]->page, PAGEDIRPAGE);
+    p_entry_set_pagetype(blocks[2]->page, PAGEIDSTOREPAGE);
+
     /*
      * DB info page:
      * 
@@ -217,6 +221,7 @@ void free_pages_id(pool_mg_s *pm, disk_mg_s *dm, uint32_t *from, int n)
             p_entry_set_nextpid(page, from[i]);
             page_swap_out(dm, pm->ft_block);
             page_init(page, sizeof(uint32_t), from[i], PAGEIDNULL);
+            p_entry_set_pagetype(page, PAGEIDSTOREPAGE);
             p_entry_insert(page, ((char*)&prev_id), sizeof(uint32_t));
         }
     }
@@ -435,7 +440,7 @@ void gpt_remove(gpt_s *gpt, avl_node_s *node)
 /*
  * Page CRUD Interface 
  */
-block_s* mp_page_create(pool_mg_s *pm, disk_mg_s *dm)
+block_s* mp_page_create(pool_mg_s *pm, disk_mg_s *dm, uint16_t page_type, uint16_t data_width)
 {
     block_s *block;
     gnode_s *gnode;
@@ -458,8 +463,8 @@ block_s* mp_page_create(pool_mg_s *pm, disk_mg_s *dm)
     ECHECK_MALLOC(a_node, FILELOCATION);
 
     gpt_push(&pm->gpt, a_node);
-    page_init(block->page, 4, page_id, PAGEIDNULL);
-    
+    page_init(block->page, data_width, page_id, PAGEIDNULL);
+    p_entry_set_pagetype(block->page, page_type);
     block->state = PAGEINPOOL;
     return block;
 }

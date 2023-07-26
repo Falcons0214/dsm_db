@@ -1,4 +1,5 @@
 #include <stdbool.h>
+#include <stdint.h>
 #include <string.h>
 #include "../../include/page.h"
 
@@ -188,6 +189,19 @@ char* p_entry_read_by_index(page_s *page, uint16_t index)
 bool p_is_page_full(page_s *page)
 {
     return is_page_full(page);
+}
+
+bool p_is_entry_nullable(page_s *page, uint16_t index)
+{
+    uint16_t *cur_slot = (uint16_t*)get_slot_addr(page, index);
+    uint16_t slot_value = get_slot_value(*cur_slot);
+    return (slot_value & SLOTNULLBITMASK) ? true : false;
+}
+
+void p_entry_set_pagetype(page_s *page, uint16_t type)
+{
+    page->page_type = type;
+    update_checksum(page);
 }
 
 void page_init(page_s *page, uint16_t width, uint32_t id, uint32_t next_id)

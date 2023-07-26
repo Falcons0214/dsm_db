@@ -16,12 +16,23 @@ typedef struct page page_s;
  * Page & Page Header size
  */
 #define PAGESIZE 4096 // !!
-#define PAGEHEADER 18
+#define PAGEHEADER 20
 #define PAGEHEADERSIZE 32
 #define PAGEHPADDINGSIZE (PAGEHEADERSIZE - PAGEHEADER)
 
 #define CHECKSUMSIZE 2
 #define ENTRYLIMIT 4062
+
+/*
+ * Page type
+ */
+#define SYSROOTPAGE 0
+#define PAGEDIRPAGE 1
+#define PAGEIDSTOREPAGE 2
+#define TABLEPAGE 3
+#define TABLEINFOPAGE 4
+#define ATTRTPAGE 5
+#define DATAPAGE 6
 
 /*
  * Slot map define
@@ -51,9 +62,9 @@ typedef struct page page_s;
  *  -----------------------------------------------
  * | record_number (2) | Data_width (2) | Flags (2)|
  *  -----------------------------------------------
- * | free_slot_offset (2) | Reserve (14)           |
+ * | free_slot_offset (2) | Page type (2) |        -
  *  -----------------------------------------------
- * |                                               |
+ * - Reserve (12) |                                |
  *  -----------------------------------------------
  * | Data start ---->                              |
  *  -----------------------------------------------
@@ -71,8 +82,8 @@ struct page
     uint16_t data_width;
     uint16_t flags;
     uint16_t free_slot_offset;
+    uint16_t page_type;
     char padding[PAGEHPADDINGSIZE];
-    
     char data[PAGESIZE - PAGEHEADERSIZE];
 } __attribute__ ((packed));
 
@@ -109,11 +120,13 @@ inline bool p_entry_check_exist_by_index(page_s*, uint16_t);
 // interface
 void page_init(page_s*, uint16_t, uint32_t, uint32_t); // width default is 4
 bool p_is_page_full(page_s*);
+bool p_is_entry_nullable(page_s*, uint16_t);
 uint16_t p_entry_insert(page_s*, char*, uint16_t);
 uint16_t p_entry_delete_by_index(page_s*, uint16_t);
 uint16_t p_entry_update_by_index(page_s*, char*, uint16_t);
 char* p_entry_read_by_index(page_s*, uint16_t);
 uint16_t p_entry_set_nextpid(page_s*, uint32_t);
 uint16_t p_entry_set_width(page_s*, uint16_t);
+void p_entry_set_pagetype(page_s*, uint16_t);
 
 #endif /* PAGE_H */

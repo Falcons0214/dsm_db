@@ -109,6 +109,9 @@ void djb2_pop(djb2_hash_s *hash, char *str)
         cur = cur->next;
     }
     pthread_mutex_unlock(&hash->mlock_table[bucket_index]);
-    free(cur->table_name);
-    free(cur);
+
+    if (cur) {
+        free(cur->table_name);
+        free(cur);
+    }
 }
