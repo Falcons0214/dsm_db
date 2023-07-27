@@ -4,6 +4,7 @@
 #include <string.h>
 #include <stdlib.h>
 #include <stdio.h>
+#include <sys/types.h>
 
 #include "../../include/interface.h"
 #include "../../include/page.h"
@@ -78,7 +79,8 @@ block_s* search_table_from_pdir(pool_mg_s *pm, disk_mg_s *dm, char *name, uint32
             entry ++;
             if (__strcmp(name, table)) {
                 mp_release_page_rlock(cur_page_dir);
-                memcpy(page_id, &table[28], 4);
+                if (page_id)
+                    memcpy(page_id, &table[28], 4);
                 return cur_page_dir;
             }
         }
@@ -183,6 +185,26 @@ bool db_create_table(pool_mg_s *pm, disk_mg_s*dm, char *table_name, char **attrs
     return true;
 }
 
+static bool table_record_update(pool_mg_s *pm, disk_mg_s *dm, block_s *root_table, int var)
+{
+    block_s *info_block;
+    char *tmp;
+    int record_num;
+
+    tmp = p_entry_read_by_index(root_table->page, 0);
+    info_block = mp_page_open(pm, dm, *((int*)&tmp[28]));
+    if (!info_block) {
+        // info block open failed.
+        return false;
+    }
+
+    tmp = p_entry_read_by_index(info_block->page, RECORDNUM);
+    record_num = (*((int*)tmp)) + var;
+    p_entry_update_by_index(info_block->page, (char*)&record_num, RECORDNUM);
+
+    return true;
+}
+
 /*---------- <High level function call for general table operations> ----------*/
 block_s* db_1_topen(pool_mg_s *pm, disk_mg_s *dm, char *tname)
 {
@@ -199,11 +221,11 @@ block_s* db_1_topen(pool_mg_s *pm, disk_mg_s *dm, char *tname)
     }else
         return tblock;
 
-    if (tblock) {
+    if (!tblock) {
         // err handler, for table page open failed.
         return NULL;
     }
-
+    
     djb2_push(pm->hash_table, tname, tblock);
     return tblock;
 }
@@ -307,21 +329,22 @@ void db_1_tread(pool_mg_s *pm, disk_mg_s *dm, int fd, char *tname, char **attrs,
 
 }
 
+/*
+ * Not thread safe.
+ */
 bool db_1_tinsert(pool_mg_s *pm, disk_mg_s *dm, char *tname, char **attrs, int *types)
 {
     block_s *root_table = db_1_topen(pm, dm, tname);
     block_s *info_block, *attr_tblock, *prev_block, *data_block;
     char buf32[RTABLEENYRTSIZE], buf6[ATTRTABLEENTRYSIZE], *tmp;
-    int record_num, brk;
+    int brk;
     uint16_t remain;
 
-    tmp = p_entry_read_by_index(root_table->page, 0);
-    info_block = mp_page_open(pm, dm, *((int*)&tmp[28]));
-    tmp = p_entry_read_by_index(info_block->page, RECORDNUM);
-    record_num = (*((int*)tmp)) + 1;
-    p_entry_update_by_index(info_block->page, (char*)&record_num, RECORDNUM);
+    if (!root_table) {
+        // table open failed.
+    }
     
-    for (int i = 1, entry = 0; entry < (root_table->page->record_num - 1); i ++) {
+    for (int i = 1, entry = 0, h; entry < (root_table->page->record_num - 1); i ++) {
         tmp = p_entry_read_by_index(root_table->page, i);
         if (!tmp) continue;
 
@@ -332,24 +355,25 @@ bool db_1_tinsert(pool_mg_s *pm, disk_mg_s *dm, char *tname, char **attrs, int *
             return false;
         }
         brk = 1;
+        h = 0;
         while (brk) {
-            for (int h = 0; h < attr_tblock->page->record_num; h ++) {
+            for (; h < attr_tblock->page->record_num; h ++) {
                 tmp = p_entry_read_by_index(attr_tblock->page, h);
                 if (!tmp) continue;
-                remain = *((int*)&tmp[4]);
+                remain = *((uint16_t*)&tmp[4]);
+
                 /*
                  * If page have seat, insert value in page.
                  */
                 if (remain < get_max_entries(types[i-1])) {
                     brk = 0;
-
                     remain ++;
-                    memcpy(buf6, &(attr_tblock->page->page_id), sizeof(uint32_t));
+                    memcpy(buf6, tmp, sizeof(int));
                     memcpy(&buf6[4], &remain, sizeof(uint16_t));
                     mp_require_page_wlock(attr_tblock);
-                    p_entry_update_by_index(attr_tblock->page, buf6, ATTRTABLEENTRYSIZE);
+                    p_entry_update_by_index(attr_tblock->page, buf6, h);
                     mp_release_page_wlock(attr_tblock);
-                    
+
                     data_block = mp_page_open(pm, dm, *((int*)tmp));
                     mp_require_page_wlock(data_block);
                     p_entry_insert(data_block->page, attrs[i-1], types[i-1]);
@@ -357,44 +381,139 @@ bool db_1_tinsert(pool_mg_s *pm, disk_mg_s *dm, char *tname, char **attrs, int *
                     break;
                 }
             }
+            
             /*
              * 
              */
             if (brk) {
-                if (attr_tblock->page->next_page_id == PAGEIDNULL) {
-                    prev_block = attr_tblock;
-                    attr_tblock = mp_page_create(pm, dm, ATTRTPAGE, ATTRTABLEENTRYSIZE);
-                    p_entry_set_nextpid(prev_block->page, attr_tblock->page->page_id);
+                if (h < get_max_entries(ATTRTABLEENTRYSIZE)) {
                     data_block = mp_page_create(pm, dm, DATAPAGE, types[i-1]);
+                    DIRTYSET(&data_block->flags);
                     memset(buf6, 0, ATTRTABLEENTRYSIZE);
                     memcpy(buf6, &(data_block->page->page_id), sizeof(uint32_t));
                     p_entry_insert(attr_tblock->page, buf6, ATTRTABLEENTRYSIZE);
                 }else{
+                    if (attr_tblock->page->next_page_id == PAGEIDNULL) {
+                        prev_block = attr_tblock;
+                        attr_tblock = mp_page_create(pm, dm, ATTRTPAGE, ATTRTABLEENTRYSIZE);
+                        DIRTYSET(&attr_tblock->flags);
+                        p_entry_set_nextpid(prev_block->page, attr_tblock->page->page_id);
+                        data_block = mp_page_create(pm, dm, DATAPAGE, types[i-1]);
+                        DIRTYSET(&data_block->flags);
+                        memset(buf6, 0, ATTRTABLEENTRYSIZE);
+                        memcpy(buf6, &(data_block->page->page_id), sizeof(uint32_t));
+                        p_entry_insert(attr_tblock->page, buf6, ATTRTABLEENTRYSIZE);
+                    }else{
+                        attr_tblock = mp_page_open(pm, dm, attr_tblock->page->next_page_id);
+                        if (!attr_tblock) {
+                            // attribute table page open failed.
+                            return false;
+                        }
+                    }
+                    h = 0;
+                }
+            }
+        }
+    }
+
+    if (!table_record_update(pm, dm, root_table, 1)) {
+        // record number update failed.
+        return false;
+    }
+    return true;
+}
+
+void db_1_tremove_by_index(pool_mg_s *pm, disk_mg_s *dm, char *tname, int record_index)
+{
+    block_s *root_table = db_1_topen(pm, dm, tname);
+    block_s *info_block, *attr_tblock, *data_block;
+    char *tmp;
+    int index, brk, records;
+
+    if (!root_table) {
+        // table open failed.
+    }
+
+    for (int i = 1, entry = 0; entry < (root_table->page->record_num - 1); i ++) {
+        tmp = p_entry_read_by_index(root_table->page, i);
+        if (!tmp) continue;
+        attr_tblock = mp_page_open(pm, dm, *((int*)&tmp[28]));
+        if (!attr_tblock) {
+            // attribute table open failed.
+        }
+        entry ++;
+        index = 0;
+        brk = 1;
+        while (brk) {
+            for (int h = 0; h < attr_tblock->page->record_num; h ++) {
+                tmp = p_entry_read_by_index(attr_tblock->page, h);
+                if (!tmp) continue;
+                records = *((uint16_t*)&tmp[4]);
+                index += records;
+
+                /*
+                * Index < record index mean the record is not exist in the page,
+                * so we move to next page until we find index is bigger or equal
+                * record index.
+                */ 
+                if (index < record_index)
+                    continue;
+                else{
+                    data_block = mp_page_open(pm, dm, *((int*)tmp));
+                    if (!data_block) {
+                        // data page open failed.
+                    }
+                    brk = 0;
+                    index -= records;
+                    for (int j = 0; j < data_block->page->record_num; j ++) {
+                        tmp = p_entry_read_by_index(data_block->page, j);
+                        if (!tmp) continue;
+                        index ++;
+                        if (index == record_index) {
+                            p_entry_delete_by_index(data_block->page, j);
+                            break;
+                        }
+                    }
+                    break;
+                } 
+            }
+            
+            if (brk) {
+                if (attr_tblock->page->next_page_id == PAGEIDNULL) {
+                    // record index is not exist.
+                }else{
                     attr_tblock = mp_page_open(pm, dm, attr_tblock->page->next_page_id);
                     if (!attr_tblock) {
                         // attribute table page open failed.
-                        return false;
                     }
                 }
             }
         }
     }
 
-    return true;
+    if (!table_record_update(pm, dm, root_table, -1)) {
+        // record number update failed.
+    }
 }
 
-void db_1_tremove(pool_mg_s *pm, disk_mg_s *dm, char *tname, char **attrs)
+char* db_1_tschema(pool_mg_s *pm, disk_mg_s *dm, int fd, char *tname)
 {
-    block_s *root_table;
-    
-    root_table = db_1_topen(pm, dm, tname); 
-}
+    block_s *root_table = db_1_topen(pm, dm, tname);
+    char *tmp, *chunk = malloc(sizeof(char)*CHUNKSIZE);
 
-void db_1_tschema(pool_mg_s *pm, disk_mg_s *dm, int fd, char *tname)
-{
-    block_s *root_table;
-    
-    root_table = db_1_topen(pm, dm, tname);
+    if (!root_table || !chunk) {
+        // root table page open failed.
+        return NULL;
+    }
+
+    memset(chunk, '\0', CHUNKSIZE);
+    for (int i = 1, entry = 0; entry < root_table->page->record_num; i ++) {
+        tmp = p_entry_read_by_index(root_table->page, i);
+        if (!tmp) continue;
+        entry ++;
+        sprintf(&chunk[strlen(chunk)], "%s,", tmp);
+    }
+    return chunk;
 }
 
 /*---------- <High level function call for index operations> ----------*/
