@@ -44,7 +44,7 @@ typedef struct page page_s;
 #define SLOTISNULL 0x8000
 #define SLOTISFULL 0x4000
 #define SLOTISEMPTY 0xbfff
-
+#define SLOTNULL 0x1fff
 #define ISSLOTEMPTY(f) (f & SLOTSEATBBITMASK) ? false : true
 
 /*

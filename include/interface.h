@@ -33,8 +33,9 @@ block_s* db_1_topen(pool_mg_s*, disk_mg_s*, char*);
 bool db_1_tdelete(pool_mg_s*, disk_mg_s*, char*);
 void db_1_tread(pool_mg_s*, disk_mg_s*, int, char*, char**, int);
 bool db_1_tinsert(pool_mg_s*, disk_mg_s*, char*, char**, int*);
-void db_1_tremove(pool_mg_s*, disk_mg_s*, char*, char**);
-void db_1_tschema(pool_mg_s*, disk_mg_s*, int, char*);
+bool db_1_tremove_by_index(pool_mg_s*, disk_mg_s*, char*, int);
+void db_1_trecycle(pool_mg_s*, disk_mg_s*, char*);
+char* db_1_tschema(pool_mg_s*, disk_mg_s*, int, char*);
 
 void db_1_icreate(pool_mg_s*, disk_mg_s*, char*, char**, int, int*);
 void db_1_iopen(pool_mg_s*, disk_mg_s*, char*);

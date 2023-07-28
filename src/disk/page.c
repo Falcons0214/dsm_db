@@ -139,7 +139,11 @@ uint16_t p_entry_delete_by_index(page_s *page, uint16_t index)
 
     set_slot_unseat(cur_slot);
 
-    *cur_slot = page->free_slot_offset;
+    if (page->free_slot_offset == PAGEISFULL)
+        *cur_slot = SLOTNULL;
+    else
+        *cur_slot = page->free_slot_offset;
+
     page->free_slot_offset = index;
     page->record_num --;
 
