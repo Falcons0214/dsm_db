@@ -69,14 +69,17 @@ bool djb2_push(djb2_hash_s *hash, char *str, block_s *block)
 {
     unsigned long hash_value = __hash(str);
     int bucket_index = hash_value % hash->buckets;
+    char *tmp = (char*)malloc(sizeof(char) * (strlen(str) + 1));
 
     djb2_node_s *n = (djb2_node_s*)malloc(sizeof(djb2_node_s));
-    if (!n) {
+    if (!n || !tmp) {
         perror("djb2 push fail");
         return NULL;
     }
 
-    n->table_name = str;
+    memset(tmp, '\0', strlen(str) + 1);
+    memcpy(tmp, str, strlen(str));
+    n->table_name = tmp;
     n->tblock = block;
 
     pthread_mutex_lock(&hash->mlock_table[bucket_index]);
