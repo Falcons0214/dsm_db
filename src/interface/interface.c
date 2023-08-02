@@ -417,9 +417,9 @@ char* __do_rep(pool_mg_s *pm, disk_mg_s *dm, block_s *attr_tblock)
 {
     block_s *cur = attr_tblock, *prev, *data;
     char *tar = (char*)malloc(sizeof(char) * cur->page->data_width), *tmp, *tmp2;
-    char buf[ATTRTABLEENTRYSIZE];
+    char buf[ATTRTABLEENTRYSIZE], brk = 0;
     short remain;
-    int page_index;
+    int page_index, entry_index;
 
     if (!tar) return NULL;
 
@@ -437,13 +437,16 @@ char* __do_rep(pool_mg_s *pm, disk_mg_s *dm, block_s *attr_tblock)
 
     data = mp_page_open(pm, dm, *((int*)tmp));
     memcpy(&remain, &tmp[4], sizeof(uint16_t));
+
     for (int i = 0, entry = 0; entry < data->page->record_num; i ++) {
         tmp2 = p_entry_read_by_index(data->page, i);
         if (!tmp2) continue;
-        memcpy(tar, tmp2, data->page->data_width);
-        p_entry_delete_by_index(data->page, i);
-        break;
+        entry ++;
+        entry_index = i;
     }
+
+    memcpy(tar, tmp2, data->page->data_width);
+    p_entry_delete_by_index(data->page, entry_index);
     remain --;
 
     if (!remain)
@@ -472,20 +475,28 @@ char* __do_rep(pool_mg_s *pm, disk_mg_s *dm, block_s *attr_tblock)
 /*
  * Only delete record from table, didn't recycle useless pages.
  */
-bool db_1_tremove_by_index(pool_mg_s *pm, disk_mg_s *dm, char *tname, int record_index, bool rep)
+bool db_1_tremove_by_index(pool_mg_s *pm, disk_mg_s *dm, char *tname, int record_index)
 {
     block_s *root_table = db_1_topen(pm, dm, tname);
-    block_s *attr_tblock, *data_block;
+    block_s *attr_tblock, *data_block, *info_block;
     char *tmp, buf6[ATTRTABLEENTRYSIZE];
-    int index, brk, records, attr_records;
+    int index, brk, records, trecord;
     uint16_t remain;
 
     if (!root_table) {
         // table open failed.
         return false;
     }
+
+    tmp = p_entry_read_by_index(root_table->page, 0);
+    info_block = mp_page_open(pm, dm, FROMATTRGETPID(tmp));
+    if (!info_block) {
+        return false;
+    }
+    trecord = info_block->page->record_num;
+
     record_index --;
-    for (int i = 1, entry = 0; entry < (root_table->page->record_num - 1); i ++) {
+    for (int i = 1, entry = 1; entry < root_table->page->record_num; i ++) {
         tmp = p_entry_read_by_index(root_table->page, i);
         if (!tmp) continue;
         attr_tblock = mp_page_open(pm, dm, FROMATTRGETPID(tmp));
@@ -497,8 +508,7 @@ bool db_1_tremove_by_index(pool_mg_s *pm, disk_mg_s *dm, char *tname, int record
         index = 0;
         brk = 1;
         while (brk) {
-            attr_records = attr_tblock->page->record_num;
-            for (int h = 0, entry2 = 0; entry2 < attr_records; h ++) {
+            for (int h = 0, entry2 = 0; entry2 < attr_tblock->page->record_num; h ++) {
                 tmp = p_entry_read_by_index(attr_tblock->page, h);
                 if (!tmp) continue;
                 records = *((uint16_t*)&tmp[4]);
@@ -528,8 +538,8 @@ bool db_1_tremove_by_index(pool_mg_s *pm, disk_mg_s *dm, char *tname, int record
                              * The attr_tblock it pointer to the attribute table page
                              * is the delete value data page stay.
                              */
-                            if (rep && (attr_tblock->page->next_page_id != PAGEIDNULL \
-                                    || entry2 != attr_records - 1)) {
+                            if (trecord != 1 || (attr_tblock->page->next_page_id != PAGEIDNULL && \
+                                                 entry3 != data_block->page->record_num - 1)) {
                                 tmp =  __do_rep(pm, dm, attr_tblock);
                                 p_entry_update_by_index(data_block->page, tmp, j);
                                 free(tmp);
@@ -570,86 +580,10 @@ bool db_1_tremove_by_index(pool_mg_s *pm, disk_mg_s *dm, char *tname, int record
     return true;
 }
 
-/* 
- * Traversal table & rearrange each entry for
- * avoid internal fragmentation.
- */
-bool db_1_trearrange(pool_mg_s *pm, disk_mg_s *dm, char *tname)
-{
-    block_s *root_table = db_1_topen(pm, dm, tname), *attr_tblock, *data_block;
-    short records;
-    int data_width, pid;
-    char *tmp, first = 1, brk = 1, buf[ATTRTABLEENTRYSIZE];
-
-    if (!root_table) {
-        return false;
-    }
-
-    for (int i = 1, entry = 1; entry < (root_table->page->record_num - 1); i++) {
-        tmp = p_entry_read_by_index(root_table->page, i);
-        if (!tmp) continue;
-        entry ++;
-        attr_tblock = mp_page_open(pm, dm, FROMATTRGETPID(tmp));
-        if (attr_tblock){}
-
-        while (brk) {
-            brk = 0;
-            for (int h = 0, entry2 = 0; entry2 < attr_tblock->page->record_num; h ++) {
-                tmp = p_entry_read_by_index(attr_tblock->page, h);
-                if (!tmp) continue;
-                entry2 ++;
-                pid = *((int*)tmp);
-                records = *((uint16_t*)&tmp[4]);
-
-                if (first) {
-                    data_block = mp_page_open(pm, dm, pid);
-                    if (!data_block) {}
-                    data_width = data_block->page->data_width;
-                    first = 0;
-                }
-                
-                if (records >= get_max_entries(data_width)) continue;
-
-                data_block = mp_page_open(pm, dm, pid);
-                if (!data_block) {}
-                for (int j = 0; j < data_block->page->record_num; j ++) {
-                    tmp = p_entry_read_by_index(data_block->page, j);
-                    if (!tmp && attr_tblock->page->next_page_id != PAGEIDNULL \
-                             && entry2 < (attr_tblock->page->record_num - 1)) {
-                        tmp = __do_rep(pm, dm, attr_tblock);
-                        p_entry_update_by_index(data_block->page, tmp, j);
-                        free(tmp);
-                        records ++;
-                    }else
-                        break;
-                }
-                DIRTYSET(&data_block->flags);
-
-                memcpy(buf, &pid, sizeof(int));
-                memcpy(&buf[4], &records, sizeof(uint16_t));
-                p_entry_update_by_index(attr_tblock->page, buf, h);
-                DIRTYSET(&attr_tblock->flags);
-            }
-
-            if (attr_tblock->page->next_page_id == PAGEIDNULL)
-                break;
-            else{
-                brk = 1;
-                attr_tblock = mp_page_open(pm, dm, attr_tblock->page->next_page_id);
-                if (!attr_tblock) {
-                    // attribute table page open failed.
-                    return false;
-                }
-            }
-        }
-    }
-    return true; 
-}
-
-char* db_1_tschema(pool_mg_s *pm, disk_mg_s *dm, int fd, char *tname)
+char* db_1_tschema(pool_mg_s *pm, disk_mg_s *dm, char *tname)
 {
     block_s *root_table = db_1_topen(pm, dm, tname);
-    char *tmp, *chunk = malloc(sizeof(char)*CHUNKSIZE);
+    char *tmp, *chunk = (char*)malloc(sizeof(char)*CHUNKSIZE);
 
     if (!root_table || !chunk) {
         // root table page open failed.
@@ -657,11 +591,11 @@ char* db_1_tschema(pool_mg_s *pm, disk_mg_s *dm, int fd, char *tname)
     }
 
     memset(chunk, '\0', CHUNKSIZE);
-    for (int i = 1, entry = 0; entry < root_table->page->record_num; i ++) {
+    for (int i = 1, entry = 1; entry < root_table->page->record_num; i ++) {
         tmp = p_entry_read_by_index(root_table->page, i);
         if (!tmp) continue;
         entry ++;
-        sprintf(&chunk[strlen(chunk)], "%s,", tmp);
+        sprintf(&chunk[strlen(chunk)], "%s, ", tmp);
     }
     return chunk;
 }
