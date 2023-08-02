@@ -126,7 +126,7 @@ bool db_create_table(pool_mg_s *pm, disk_mg_s*dm, char *table_name, char **attrs
 {
     block_s *new_table_block = mp_page_create(pm, dm, TABLEPAGE, RTABLEENYRTSIZE);
     block_s *attr_block, *data_block, *table_info_block;
-    uint32_t table_pid, attr_pid;
+    uint32_t table_pid;
     char buf[RTABLEENYRTSIZE], buf6[ATTRTABLEENTRYSIZE];
     int tmp = 0;
 
@@ -212,7 +212,7 @@ block_s* db_1_topen(pool_mg_s *pm, disk_mg_s *dm, char *tname)
      * Fisrt we find from hash table, if table can't find from hash table
      * then load it from disk, and update hash table.
      */
-    block_s *tblock = djb2_search(pm->hash_table, tname), *iblock;
+    block_s *tblock = djb2_search(pm->hash_table, tname);
     uint32_t table_pid;
 
     if (!tblock) {
@@ -321,8 +321,8 @@ void db_1_tread(pool_mg_s *pm, disk_mg_s *dm, int fd, char *tname, char **attrs,
 bool db_1_tinsert(pool_mg_s *pm, disk_mg_s *dm, char *tname, char **attrs, int *types)
 {
     block_s *root_table = db_1_topen(pm, dm, tname);
-    block_s *info_block, *attr_tblock, *prev_block, *data_block;
-    char buf32[RTABLEENYRTSIZE], buf6[ATTRTABLEENTRYSIZE], *tmp;
+    block_s *attr_tblock, *prev_block, *data_block;
+    char buf6[ATTRTABLEENTRYSIZE], *tmp;
     int brk;
     uint16_t remain;
 
@@ -475,7 +475,7 @@ char* __do_rep(pool_mg_s *pm, disk_mg_s *dm, block_s *attr_tblock)
 bool db_1_tremove_by_index(pool_mg_s *pm, disk_mg_s *dm, char *tname, int record_index, bool rep)
 {
     block_s *root_table = db_1_topen(pm, dm, tname);
-    block_s *info_block, *attr_tblock, *data_block;
+    block_s *attr_tblock, *data_block;
     char *tmp, buf6[ATTRTABLEENTRYSIZE];
     int index, brk, records, attr_records;
     uint16_t remain;
@@ -570,251 +570,79 @@ bool db_1_tremove_by_index(pool_mg_s *pm, disk_mg_s *dm, char *tname, int record
     return true;
 }
 
-/* !!
- * Traversal table & free useless data & attribute pages.
- * This function didn't solved internel fragementation problem. 
- */
-void __trecycle(pool_mg_s *pm, disk_mg_s *dm, block_s *root_table)
-{
-    block_s *attr_tblock, *prev_tblock;
-    char *tmp;
-    uint16_t records;
-
-    for (int i = 1, h, entry = 1, entry2; entry < root_table->page->record_num; i ++) {
-        tmp = p_entry_read_by_index(root_table->page, i);
-        if (!tmp) continue;
-        attr_tblock = mp_page_open(pm, dm, FROMATTRGETPID(tmp));
-        if (!attr_tblock) {
-
-        }
-        entry ++;
-        prev_tblock = attr_tblock;
-        
-        /*
-         * Skip First attr table page & data page.
-         */
-        h = entry2 = 1;
-        while (1) {
-            /*
-             * Remove all empty data pages in attribute table.
-             */
-            for (; entry2 < attr_tblock->page->record_num; h ++) {
-                tmp = p_entry_read_by_index(attr_tblock->page, h);
-                if (!tmp) continue;
-                entry2 ++;
-                records = *((uint16_t*)(&tmp[4]));
-                if (!records)
-                    free_pages_id(pm, dm, (uint32_t*)&records, 1);
-            }
-
-            if (attr_tblock->page->next_page_id == PAGEIDNULL) {
-                /*
-                 * When attribute table is last.
-                 */
-                if (prev_tblock != attr_tblock && !attr_tblock->page->record_num) {
-                    p_entry_set_nextpid(prev_tblock->page, PAGEIDNULL);
-                    free_pages_id(pm, dm, &attr_tblock->page->page_id, 1);
-                }
-                break;
-            }else{
-                if (!attr_tblock->page->record_num) {
-                    p_entry_set_nextpid(prev_tblock->page, attr_tblock->page->next_page_id);
-                    free_pages_id(pm, dm, &attr_tblock->page->page_id, 1);
-                }
-                prev_tblock = attr_tblock;
-                attr_tblock = mp_page_open(pm, dm, attr_tblock->page->next_page_id);
-                if (!attr_tblock) {}
-            }
-            h = entry2 = 0;
-        }
-    }
-}
-
-/* !!
- * Rearrange attribute table, let those pages it is complete
- * continuously stay in the attribute table, and free those
- * unused attribute table.
- */
-void __attr_table_rearrange(pool_mg_s *pm, disk_mg_s *dm, block_s *root_table)
-{
-    block_s *cur_attr_t, *prev_attr_t = NULL, *head_block, *full, *prev2;
-    char *tmp, buf[RTABLEENYRTSIZE], f1, f2;
-    int x;
-
-    for (int i = 1, entry = 1; entry < root_table->page->record_num; i ++) {
-REARRANGESTART:
-        tmp = p_entry_read_by_index(root_table->page, i);
-        if (!tmp) continue;
-        entry ++;
-        f1 = f2 = 0;
-        /*
-         * This step is move each attribute table, let
-         * each complete table are continuously.
-         */
-        cur_attr_t = mp_page_open(pm, dm, FROMATTRGETPID(tmp));
-        head_block = cur_attr_t;
-        if (!p_is_page_full(cur_attr_t->page)) {
-            while(!p_is_page_full(cur_attr_t->page)) {
-                prev_attr_t = cur_attr_t;
-                if (cur_attr_t->page->next_page_id == PAGEIDNULL)
-                    goto SKIPATTRCONTINUOUS;
-                cur_attr_t = mp_page_open(pm, dm, cur_attr_t->page->next_page_id);
-            }
-            memcpy(buf, tmp, ATTRSIZE);
-            memcpy(&buf[ATTRSIZE], &(cur_attr_t->page->page_id), sizeof(int));
-            p_entry_update_by_index(root_table->page, buf, i);
-            x = cur_attr_t->page->next_page_id;
-            p_entry_set_nextpid(cur_attr_t->page, head_block->page->page_id);
-            p_entry_set_nextpid(head_block->page, x);
-            p_entry_set_nextpid(prev_attr_t->page, head_block->page->page_id);
-            DIRTYSET(&cur_attr_t->flags);
-            DIRTYSET(&head_block->flags);
-            DIRTYSET(&prev_attr_t->flags);
-        }
-
-        full = mp_page_open(pm, dm, FROMATTRGETPID(tmp));
-        prev_attr_t = full;
-        cur_attr_t = mp_page_open(pm, dm, full->page->next_page_id);
-        while (p_is_page_full(cur_attr_t->page)) {
-            full = cur_attr_t;
-            if (cur_attr_t->page->next_page_id == PAGEIDNULL)
-                goto REARRANGESTART;
-            cur_attr_t = mp_page_open(pm, dm, cur_attr_t->page->next_page_id);
-        }
-
-        while (1) {
-            while (!p_is_page_full(cur_attr_t->page)) {
-                prev_attr_t = cur_attr_t;
-                if (cur_attr_t->page->next_page_id == PAGEIDNULL)
-                    goto SKIPATTRCONTINUOUS;
-                cur_attr_t = mp_page_open(pm, dm, cur_attr_t->page->next_page_id);
-            }
-            while (p_is_page_full(cur_attr_t->page)) {
-                prev2 = cur_attr_t;
-                if (cur_attr_t->page->next_page_id == PAGEIDNULL)
-                    break;
-                cur_attr_t = mp_page_open(pm, dm, cur_attr_t->page->next_page_id);
-            }
-            x = full->page->next_page_id;
-            p_entry_set_nextpid(full->page, prev_attr_t->page->next_page_id);
-            p_entry_set_nextpid(prev_attr_t->page, prev2->page->next_page_id);
-            p_entry_set_nextpid(prev2->page, x);
-            DIRTYSET(&full->flags);
-            DIRTYSET(&prev_attr_t->flags);
-            DIRTYSET(&prev2->flags);
-            
-            full = prev2;
-        }
-
-SKIPATTRCONTINUOUS:
-        prev_attr_t = mp_page_open(pm, dm, full->page->next_page_id);
-        if (prev_attr_t->page->next_page_id == PAGEIDNULL)
-            goto REARRANGESTART;
-        cur_attr_t = mp_page_open(pm, dm, prev_attr_t->page->next_page_id);
-        while(1) {
-            if (f1) {
-                prev_attr_t = cur_attr_t;
-                if (cur_attr_t->page->next_page_id == PAGEIDNULL)
-                    goto REARRANGESTART;
-                cur_attr_t = mp_page_open(pm, dm, prev_attr_t->page->next_page_id);
-                f1 = 0;
-            }
-            if (f2) {
-                p_entry_set_nextpid(prev_attr_t->page, cur_attr_t->page->next_page_id);
-                mp_page_mdelete(pm, dm, cur_attr_t);
-                if (cur_attr_t->page->next_page_id == PAGEIDNULL)
-                    goto REARRANGESTART;
-                cur_attr_t = mp_page_open(pm, dm, prev_attr_t->page->next_page_id);
-                f2 = 0;
-            }
-            for (int h = 0;; h ++) {
-                tmp = p_entry_read_by_index(cur_attr_t->page, h);
-                if (!tmp) continue;
-                if (p_entry_insert(prev_attr_t->page, tmp, ATTRTABLEENTRYSIZE) == P_ENTRY_PAGEFULL) {
-                    f1 = 1;
-                    break;
-                }
-                DIRTYSET(&prev_attr_t->flags);
-                p_entry_delete_by_index(cur_attr_t->page, h);
-                if (!cur_attr_t->page->record_num) {
-                    f2 = 1;
-                    break;
-                }
-                DIRTYSET(&cur_attr_t->flags);
-            }
-        }
-    }
-    DIRTYSET(&root_table->flags);
-}
-
-/* !!
- * Rearrange each data record in data page.
- */
-void __data_table_rearrange(pool_mg_s *pm, disk_mg_s *dm, block_s *root_table)
-{
-    block_s *attr_tblock, *data_block;
-    char *tmp;
-    short records;
-
-    for (int i = 1, entry = 1; entry < root_table->page->record_num; i ++) {
-        tmp = p_entry_read_by_index(root_table->page, i);
-        if (!tmp) continue;
-        attr_tblock = mp_page_open(pm, dm, FROMATTRGETPID(tmp));
-        if (!attr_tblock) {}
-        entry ++;
-
-        while (1) {
-            for (int h = 0; h < attr_tblock->page->record_num; h ++) {
-                tmp = p_entry_read_by_index(attr_tblock->page, h);
-                records = *((uint16_t*)&tmp[4]);
-                if (records >= get_max_entries(data_block->page->data_width))
-                    continue;
-                
-            }
-
-        }
-        
-    }
-}
- 
-/*
- * This function use to check each attribute have more
- * than one attribute table, if one of them is only h-
- * ave one, mean this table don't need rearrange.
- */
-bool __is_need_attr_rearrage(pool_mg_s *pm, disk_mg_s *dm, block_s *root_table)
-{
-    block_s *attr_tblock;
-    char *tmp;
-
-    for (int i = 1, entry = 1; entry < root_table->page->record_num; i ++) {
-        tmp = p_entry_read_by_index(root_table->page, i);
-        if (!tmp) continue;
-        entry ++;
-        attr_tblock = mp_page_open(pm, dm, FROMATTRGETPID(tmp));
-        if (attr_tblock->page->next_page_id == PAGEIDNULL) return false;
-    }
-    return true;
-}
-
 /* 
  * Traversal table & rearrange each entry for
  * avoid internal fragmentation.
  */
 bool db_1_trearrange(pool_mg_s *pm, disk_mg_s *dm, char *tname)
 {
-    block_s *root_table = db_1_topen(pm, dm, tname);
-    block_s *attr_tblock;
-    char *tmp;
+    block_s *root_table = db_1_topen(pm, dm, tname), *attr_tblock, *data_block;
+    short records;
+    int data_width, pid;
+    char *tmp, first = 1, brk = 1, buf[ATTRTABLEENTRYSIZE];
 
     if (!root_table) {
         return false;
     }
 
-    __trecycle(pm, dm, root_table);
-    if (__is_need_attr_rearrage(pm, dm, root_table))
-        __attr_table_rearrange(pm, dm, root_table);
-    __data_table_rearrange(pm, dm, root_table);
+    for (int i = 1, entry = 1; entry < (root_table->page->record_num - 1); i++) {
+        tmp = p_entry_read_by_index(root_table->page, i);
+        if (!tmp) continue;
+        entry ++;
+        attr_tblock = mp_page_open(pm, dm, FROMATTRGETPID(tmp));
+        if (attr_tblock){}
+
+        while (brk) {
+            brk = 0;
+            for (int h = 0, entry2 = 0; entry2 < attr_tblock->page->record_num; h ++) {
+                tmp = p_entry_read_by_index(attr_tblock->page, h);
+                if (!tmp) continue;
+                entry2 ++;
+                pid = *((int*)tmp);
+                records = *((uint16_t*)&tmp[4]);
+
+                if (first) {
+                    data_block = mp_page_open(pm, dm, pid);
+                    if (!data_block) {}
+                    data_width = data_block->page->data_width;
+                    first = 0;
+                }
+                
+                if (records >= get_max_entries(data_width)) continue;
+
+                data_block = mp_page_open(pm, dm, pid);
+                if (!data_block) {}
+                for (int j = 0; j < data_block->page->record_num; j ++) {
+                    tmp = p_entry_read_by_index(data_block->page, j);
+                    if (!tmp && attr_tblock->page->next_page_id != PAGEIDNULL \
+                             && entry2 < (attr_tblock->page->record_num - 1)) {
+                        tmp = __do_rep(pm, dm, attr_tblock);
+                        p_entry_update_by_index(data_block->page, tmp, j);
+                        free(tmp);
+                        records ++;
+                    }else
+                        break;
+                }
+                DIRTYSET(&data_block->flags);
+
+                memcpy(buf, &pid, sizeof(int));
+                memcpy(&buf[4], &records, sizeof(uint16_t));
+                p_entry_update_by_index(attr_tblock->page, buf, h);
+                DIRTYSET(&attr_tblock->flags);
+            }
+
+            if (attr_tblock->page->next_page_id == PAGEIDNULL)
+                break;
+            else{
+                brk = 1;
+                attr_tblock = mp_page_open(pm, dm, attr_tblock->page->next_page_id);
+                if (!attr_tblock) {
+                    // attribute table page open failed.
+                    return false;
+                }
+            }
+        }
+    }
     return true; 
 }
 
