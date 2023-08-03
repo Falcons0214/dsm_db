@@ -5,53 +5,78 @@
 
 #include "../../include/page.h"
 
-typedef struct b_plus_page_header b_plus_page_header_s;
-typedef struct b_plus_pivot_page b_plus_pivot_page_s;
-typedef struct b_plus_leaf_page b_plus_leaf_page_s;
-typedef struct b_plus_tree b_plus_tree_s;
-typedef struct b_pivot_pair b_pivot_pair_s;
+typedef struct b_link_page_header b_link_page_header_s;
+typedef struct b_link_pivot_page b_link_pivot_page_s;
+typedef struct b_link_leaf_page b_link_leaf_page_s;
+typedef struct b_link_tree b_plus_tree_s;
+typedef struct b_link_pair b_link_pair_s;
 
-#define BPAIRSIZE 8
-#define BPLUSHEADERSIZE 16
-#define PAIRENTRYS (PAGESIZE - BPLUSHEADERSIZE) / BPAIRSIZE
+#define BLINKPAIRSIZE 8
+#define BLINKHEADERSIZE sizeof(b_link_page_header_s)
+#define PAIRENTRYS (int)((PAGESIZE - BLINKHEADERSIZE) / BLINKPAIRSIZE)
 
-enum b_index_page_type {
-    INVALID_INDEX_PAGE = 0,
-    LEAF_PAGE,
-    INTERNAL_PAGE
-};
+#define BLINK_ENTRY_LIMIT PAGESIZE - BLINKHEADERSIZE
+#define BLINK_LEAF_DATA_SIZE PAGESIZE - BLINKHEADERSIZE
+#define BLINK_PIVOT_PADDING_SIZE PAGESIZE - (PAIRENTRYS * BLINKPAIRSIZE + BLINKHEADERSIZE)
 
-struct b_pivot_pair
+#define INVALID_PAGE 0
+#define LEAF_PAGE 1
+#define PIVOT_PAGE 2
+#define ROOT_PAGE 3
+
+/*
+ * b_link_pivot_node insert return value
+ */
+#define BLP_INSERT_KEY_DUP 0
+#define BLP_INSERT_ACCEPT 1
+
+/*
+ * b_link_leaf_node insert return value
+ */
+#define BLL_INSERT_KEY_DUP 0
+#define BLL_INSERT_ACCEPT 1
+
+struct b_link_pair
 {
     uint32_t key;
-    uint32_t child_page_id;  
+    uint32_t cpid;
 };
 
-struct b_plus_page_header
+struct b_link_page_header
 {
-    uint32_t page_id;
-    uint32_t par_page_id;
-    uint32_t checksum;
-    enum b_index_page_type page_type;
-};
+    uint32_t pid;
+    uint32_t ppid;
+    uint32_t npid;
+    uint16_t records;
+    uint16_t width;
+    uint16_t page_type;
+}__attribute__ ((packed));
 
-struct b_plus_pivot_page
+struct b_link_pivot_page
 {
-    b_plus_page_header_s page_header;
-    b_pivot_pair_s arr[PAIRENTRYS];
-};
+    b_link_page_header_s header;
+    b_link_pair_s pairs[PAIRENTRYS];
+    char padding[BLINK_PIVOT_PADDING_SIZE];  
+} __attribute__ ((packed));
 
-struct b_plus_leaf_page
+struct b_link_leaf_page
 {
-    b_plus_page_header_s page_header;
-    uint32_t next_page_id;
-};
+    b_link_page_header_s header;
+    char data[BLINK_LEAF_DATA_SIZE];
+} __attribute__ ((packed));
 
-struct b_plus_tree
-{
-    uint32_t root_page_id;
-    uint16_t value_size;
-     
-};
+
+bool b_link_is_pivot_full(b_link_pivot_page_s*);
+bool b_link_is_leaf_full(b_link_leaf_page_s*);
+void b_link_leaf_create(b_link_leaf_page_s*, uint32_t, uint32_t, uint32_t, \
+                        uint16_t, uint16_t);
+void b_link_pivot_create(b_link_pivot_page_s*, uint32_t, uint32_t, uint32_t, \
+                         uint16_t, int*, int*);
+
+uint32_t b_link_pivot_search(b_link_pivot_page_s*, uint32_t);
+char* b_link_leaf_search(b_link_leaf_page_s*, uint32_t);
+
+char b_link_entry_insert_to_pivot(b_link_pivot_page_s*, int, int);
+char b_link_entry_insert_to_leaf(b_link_leaf_page_s*, char*);
 
 #endif /* B_PAGE_H */

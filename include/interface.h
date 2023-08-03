@@ -20,7 +20,6 @@ block_s* search_table_from_pdir(pool_mg_s*, disk_mg_s*, char*, uint32_t *page_id
 void db_close_table(pool_mg_s*, disk_mg_s*, uint32_t);
 bool db_create_table(pool_mg_s*, disk_mg_s*, char*, char**, int, int*);
 
-
 /*
  * High level function call for table operations
  * 

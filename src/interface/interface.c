@@ -600,11 +600,6 @@ char* db_1_tschema(pool_mg_s *pm, disk_mg_s *dm, char *tname)
     return chunk;
 }
 
-void db_1_show_distribute(pool_mg_s *pm, disk_mg_s *dm, char *tname)
-{
-
-}
-
 /*---------- <High level function call for index operations> ----------*/
 void db_1_icreate(pool_mg_s *pm, disk_mg_s *dm, char *tname, char **attrs, int attrs_num, int *types)
 {
