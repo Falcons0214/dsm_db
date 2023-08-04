@@ -36,6 +36,30 @@ typedef struct b_link_pair b_link_pair_s;
 #define BLL_INSERT_KEY_DUP 0
 #define BLL_INSERT_ACCEPT 1
 
+/*
+ * b_link_pivot_node remove return value
+ */
+#define BLP_REMOVE_UNEXIST 0
+#define BLP_REMOVE_ACCEPT 1
+
+/*
+ * b_link_leaf_node remove return value
+ */
+#define BLL_REMOVE_UNEXIST 0
+#define BLL_REMOVE_ACCEPT 1
+
+/*
+ * b_link_pivot_node update return value
+ */
+#define BLP_UPDATE_UNEXIST 0
+#define BLP_UPDATE_ACCEPT 1
+
+/*
+ * b_link_leaf_node update return value
+ */
+#define BLL_UPDATE_UNEXIST 0
+#define BLL_UPDATE_ACCEPT 1
+
 struct b_link_pair
 {
     uint32_t key;
@@ -50,7 +74,7 @@ struct b_link_page_header
     uint16_t records;
     uint16_t width;
     uint16_t page_type;
-}__attribute__ ((packed));
+} __attribute__ ((packed));
 
 struct b_link_pivot_page
 {
@@ -65,18 +89,21 @@ struct b_link_leaf_page
     char data[BLINK_LEAF_DATA_SIZE];
 } __attribute__ ((packed));
 
-
-bool b_link_is_pivot_full(b_link_pivot_page_s*);
-bool b_link_is_leaf_full(b_link_leaf_page_s*);
-void b_link_leaf_create(b_link_leaf_page_s*, uint32_t, uint32_t, uint32_t, \
+bool blink_is_pivot_full(b_link_pivot_page_s*);
+bool blink_is_leaf_full(b_link_leaf_page_s*);
+void blink_leaf_create(b_link_leaf_page_s*, uint32_t, uint32_t, uint32_t, \
                         uint16_t, uint16_t);
-void b_link_pivot_create(b_link_pivot_page_s*, uint32_t, uint32_t, uint32_t, \
-                         uint16_t, int*, int*);
+void blink_pivot_create(b_link_pivot_page_s*, uint32_t, uint32_t, uint32_t, \
+                         uint16_t, uint32_t*, uint32_t*);
 
-uint32_t b_link_pivot_search(b_link_pivot_page_s*, uint32_t);
-char* b_link_leaf_search(b_link_leaf_page_s*, uint32_t);
+uint32_t blink_pivot_search(b_link_pivot_page_s*, uint32_t);
+char* blink_leaf_search(b_link_leaf_page_s*, uint32_t, uint32_t*);
 
-char b_link_entry_insert_to_pivot(b_link_pivot_page_s*, int, int);
-char b_link_entry_insert_to_leaf(b_link_leaf_page_s*, char*);
+char blink_entry_insert_to_pivot(b_link_pivot_page_s*, uint32_t, uint32_t);
+char blink_entry_insert_to_leaf(b_link_leaf_page_s*, char*);
+char blink_entry_remove_from_pivot(b_link_pivot_page_s*, uint32_t);
+char blink_entry_remove_from_leaf(b_link_leaf_page_s*, uint32_t);
+char blink_entry_update_pivot(b_link_pivot_page_s*, uint32_t, uint32_t);
+char blink_entry_update_leaf(b_link_leaf_page_s*, uint32_t, char*);
 
 #endif /* B_PAGE_H */
