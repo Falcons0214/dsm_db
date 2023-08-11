@@ -17,7 +17,7 @@ bool blink_is_pivot_full(b_link_pivot_page_s *page)
     return ((page->header.records + 1) == PAIRENTRYS) ? true : false;
 }
 
-void blink_leaf_create(b_link_leaf_page_s *page, uint32_t pid, uint32_t ppid, uint32_t npid, uint16_t width, \
+void blink_leaf_init(b_link_leaf_page_s *page, uint32_t pid, uint32_t ppid, uint32_t npid, uint16_t width, \
                         uint16_t type)
 {
     page->header.pid = pid;
@@ -29,28 +29,19 @@ void blink_leaf_create(b_link_leaf_page_s *page, uint32_t pid, uint32_t ppid, ui
     memset(page->data, '\0', BLINK_LEAF_DATA_SIZE);
 }
 
-void blink_pivot_create(b_link_pivot_page_s *page, uint32_t pid, uint32_t ppid, uint32_t npid, uint16_t type, \
-                        uint32_t *keys, uint32_t *pids)
+void blink_pivot_init(b_link_pivot_page_s *page, uint32_t pid, uint32_t ppid, uint32_t npid, uint16_t type)
 {
-    int i = 0;
-
     page->header.pid = pid;
     page->header.ppid = ppid;
     page->header.npid = npid;
     page->header.width = 8;
     page->header.page_type = type;
     page->header.records = 0;
-
-    for (; keys[i] != -1; i ++) {
-        page->pairs[i].key = keys[i];
-        page->pairs[i].cpid = pids[i];
-    }
-    page->pairs[i].cpid = pids[i];
-    for (; i < PAIRENTRYS; i ++)
+    for (int i = 0; i < PAIRENTRYS; i ++)
         page->pairs[i].key = page->pairs[i].cpid = PAGEIDNULL;
 }
 
-uint32_t blink_pivot_search(b_link_pivot_page_s *page, uint32_t key)
+uint32_t blink_pivot_scan(b_link_pivot_page_s *page, uint32_t key)
 {
     int upper = page->header.records;
     int lower = 0, index = 0;
@@ -71,7 +62,7 @@ uint32_t blink_pivot_search(b_link_pivot_page_s *page, uint32_t key)
     return PAGEIDNULL;
 }
 
-char* blink_leaf_search(b_link_leaf_page_s *page, uint32_t key, uint32_t *v)
+char* blink_leaf_scan(b_link_leaf_page_s *page, uint32_t key, uint32_t *v)
 {
     char *start = page->data;
     int upper = page->header.records;
@@ -218,7 +209,7 @@ char blink_entry_remove_from_leaf(b_link_leaf_page_s *page, uint32_t key)
 {
     uint32_t index, width = page->header.width;
     char *start;
-    if (!blink_leaf_search(page, key, &index)) return BLL_REMOVE_UNEXIST;
+    if (!blink_leaf_scan(page, key, &index)) return BLL_REMOVE_UNEXIST;
 
     start = page->data;
     for (int i = index; i < page->header.records - 1; i ++)
@@ -230,13 +221,32 @@ char blink_entry_remove_from_leaf(b_link_leaf_page_s *page, uint32_t key)
 
 char blink_entry_update_pivot(b_link_pivot_page_s *page, uint32_t key, uint32_t cpid)
 {
+
     return BLP_UPDATE_ACCEPT;
 }
 
 char blink_entry_update_leaf(b_link_leaf_page_s *page, uint32_t key, char *data)
 {
     uint32_t index, width = page->header.width;
-    if (!blink_leaf_search(page, key, &index)) return BLL_UPDATE_UNEXIST;
+    if (!blink_leaf_scan(page, key, &index)) return BLL_UPDATE_UNEXIST;
     memcpy(page->data + (index * width), data, width);
     return BLL_UPDATE_ACCEPT;
+}
+
+bool blink_is_node_safe(void *page, uint16_t page_type)
+{
+    if ((page_type & PIVOT_PAGE) == PIVOT_PAGE)
+        return (BLINKHEADERSIZE + ((((b_link_pivot_page_s*)page)->header.records + 1) * \
+                ((b_link_pivot_page_s*)page)->header.width) >= PAGESIZE) ? false : true;
+    else 
+        return ((((b_link_leaf_page_s*)page)->header.records + 1) == PAIRENTRYS) ? false : true;
+
+}
+
+void blink_pivot_set(b_link_pivot_page_s *page, int key, uint32_t pid_left, uint32_t pid_right)
+{
+    page->pairs[0].key = key;
+    page->pairs[0].cpid = pid_left;
+    page->pairs[1].cpid = pid_right;
+    page->header.records ++;
 }

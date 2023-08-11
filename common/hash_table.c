@@ -86,8 +86,13 @@ bool djb2_push(djb2_hash_s *hash, char *str, block_s *block)
     if (!hash->hash_table[bucket_index])
         hash->hash_table[bucket_index] = n;
     else {
-        n->next = hash->hash_table[bucket_index];
-        hash->hash_table[bucket_index] = n;
+        if (!strcmp(n->table_name, hash->hash_table[bucket_index]->table_name)) {
+            free(tmp);
+            free(n);
+        }else{
+            n->next = hash->hash_table[bucket_index];
+            hash->hash_table[bucket_index] = n;
+        }
     }
     pthread_mutex_unlock(&hash->mlock_table[bucket_index]);
     return true;

@@ -15,6 +15,7 @@ LATCH = ${SRC}/latch
 POOL = ${SRC}/pool
 NET = ${SRC}/network
 INTER = ${SRC}/interface
+INDEX = ${SRC}/index
 CMD = ${SRC}/cmd
 MUNIT = ./munit
 
@@ -38,7 +39,8 @@ pagetest: 	${DISK}/page.o ${TEST}/pagetest.c
 
 pooltest: ${ERROR}/error.o ${COMMON}/avl.o ${COMMON}/hash_table.o \
 	 	  ${DISK}/page.o ${DISK}/disk.o ${POOL}/pool.o \
-		  ${INTER}/interface.o ${TEST}/pooltest.c
+		  ${INTER}/interface.o ${INDEX}/b_page.o \
+		  ${TEST}/pooltest.c
 		  ${test_template}
 
 tpooltest:	${COMMON}/threadpool.o ${TEST}/tpooltest.c
@@ -46,6 +48,9 @@ tpooltest:	${COMMON}/threadpool.o ${TEST}/tpooltest.c
 
 avltest: 	${COMMON}/avl.o ${TEST}/avltest.c
 		 	${test_template}
+
+blink: 	${INDEX}/b_page.o ${TEST}/b_link.c
+		${test_template}
 
 tt:
 	rm ./tmp/db.dump

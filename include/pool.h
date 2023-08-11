@@ -137,6 +137,8 @@ void mp_page_mdelete(pool_mg_s*, disk_mg_s*, block_s*);
 void mp_page_ddelete(pool_mg_s*, disk_mg_s*, uint32_t);
 void mp_page_sync(pool_mg_s*, disk_mg_s*, block_s*);
 
+block_s* mp_index_create(pool_mg_s*, disk_mg_s*, uint16_t, uint16_t);
+
 /*
  * Schedular for general & system
  */

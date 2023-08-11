@@ -2,6 +2,7 @@
 #include "../../include/pool.h"
 #include "../error/error.h"
 #include "../../include/db.h"
+#include "../index/b_page.h"
 
 #include <malloc.h>
 #include <pthread.h>
@@ -352,7 +353,6 @@ avl_node_s* gpt_open_test_and_set(gpt_s *gpt, uint32_t page_id)
     ECHECK_MALLOC(new, FILELOCATION);
 
     block_s *tmp;
-    bool add_again = false;
     avl_node_s *avl_tmp, *avl_new = avl_alloc_node((void*)new, page_id);
     ECHECK_MALLOC(avl_new, FILELOCATION);
 
@@ -375,17 +375,11 @@ avl_node_s* gpt_open_test_and_set(gpt_s *gpt, uint32_t page_id)
             free(avl_new);
             return NULL;
         }else{
-            if (gnode->block)
-                atomic_fetch_add(&(gnode->block->reference_count), 1);
-            else
-                add_again = true;
             pthread_mutex_unlock(&gpt->gpt_lock);
             
             // Waiting block hook
             while (gnode->state == GNODELOADING);
-            // After hook increase ref count again
-            if (add_again)
-                atomic_fetch_add(&(gnode->block->reference_count), 1);
+            atomic_fetch_add(&(gnode->block->reference_count), 1);
             free(new);
             free(avl_new);
             return avl_tmp;
@@ -519,6 +513,7 @@ void mp_page_mdelete(pool_mg_s *pm, disk_mg_s *dm, block_s *block)
     free_pages_id(pm, dm, &page_id, 1);
     gpt_remove(&pm->gpt, a_node);
     free(gnode);
+    free(a_node);
 }
 
 /* 
@@ -530,7 +525,13 @@ void mp_page_mdelete(pool_mg_s *pm, disk_mg_s *dm, block_s *block)
  */
 void mp_page_ddelete(pool_mg_s *pm, disk_mg_s *dm, uint32_t page_id)
 {
-    free_pages_id(pm, dm, &page_id, 1);
+    avl_node_s *a_node = gpt_close_test_and_set(&pm->gpt, page_id, GNODEDESTORY, false);
+    gnode_s *gnode = (a_node) ? (gnode_s*)a_node->obj : NULL;
+
+    if (!gnode)
+        free_pages_id(pm, dm, &page_id, 1);
+    else
+        mp_page_mdelete(pm, dm, gnode->block);
 }
 
 void mp_page_close(pool_mg_s *pm, disk_mg_s *dm, block_s *block, bool enforce)
@@ -607,6 +608,39 @@ char mp_schedular(pool_mg_s *pm , disk_mg_s *dm, int need)
 char sys_schedular(pool_mg_s *pm, disk_mg_s *dm, int need)
 {
     return '\0';
+}
+
+block_s* mp_index_create(pool_mg_s *pm, disk_mg_s *dm, uint16_t page_type, uint16_t entry_width)
+{
+    block_s *block;
+    gnode_s *gnode;
+    avl_node_s *a_node;
+    uint32_t page_id;
+
+    for (int i = 0; i < SUBPOOLS; i ++) {
+        block = spm_allocate_block(&pm->sub_pool[i]);
+        if (block) break;
+    }
+    if (!block) return NULL;
+    atomic_fetch_add(&block->reference_count, 1);
+
+    allocate_pages_id(pm, dm, &page_id, 1);
+
+    gnode = gpt_allocate_node(page_id, block, GNODEFINISH);
+    ECHECK_MALLOC(gnode, FILELOCATION);
+
+    a_node = avl_alloc_node((void*)gnode, page_id);
+    ECHECK_MALLOC(a_node, FILELOCATION);
+
+    gpt_push(&pm->gpt, a_node);
+
+    if (page_type == PIVOT_PAGE)
+        blink_pivot_init((b_link_pivot_page_s*)block->page, page_id, PAGEIDNULL, PAGEIDNULL, page_type);
+    else
+        blink_leaf_init((b_link_leaf_page_s*)block->page, page_id, PAGEIDNULL, PAGEIDNULL, entry_width, page_type);
+
+    block->state = PAGEINPOOL;
+    return block;
 }
 
 /*

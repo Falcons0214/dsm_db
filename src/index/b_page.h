@@ -2,7 +2,6 @@
 #define B_PAGE_H
 
 #include <stdint.h>
-
 #include "../../include/page.h"
 
 typedef struct b_link_page_header b_link_page_header_s;
@@ -19,10 +18,10 @@ typedef struct b_link_pair b_link_pair_s;
 #define BLINK_LEAF_DATA_SIZE PAGESIZE - BLINKHEADERSIZE
 #define BLINK_PIVOT_PADDING_SIZE PAGESIZE - (PAIRENTRYS * BLINKPAIRSIZE + BLINKHEADERSIZE)
 
-#define INVALID_PAGE 0
-#define LEAF_PAGE 1
-#define PIVOT_PAGE 2
-#define ROOT_PAGE 3
+#define INVALID_PAGE 0x00
+#define LEAF_PAGE 0x01
+#define PIVOT_PAGE 0x02
+#define ROOT_PAGE 0x04
 
 /*
  * b_link_pivot_node insert return value
@@ -91,19 +90,25 @@ struct b_link_leaf_page
 
 bool blink_is_pivot_full(b_link_pivot_page_s*);
 bool blink_is_leaf_full(b_link_leaf_page_s*);
-void blink_leaf_create(b_link_leaf_page_s*, uint32_t, uint32_t, uint32_t, \
+void blink_leaf_init(b_link_leaf_page_s*, uint32_t, uint32_t, uint32_t, \
                         uint16_t, uint16_t);
-void blink_pivot_create(b_link_pivot_page_s*, uint32_t, uint32_t, uint32_t, \
-                         uint16_t, uint32_t*, uint32_t*);
+void blink_pivot_init(b_link_pivot_page_s*, uint32_t, uint32_t, uint32_t, \
+                         uint16_t);
 
-uint32_t blink_pivot_search(b_link_pivot_page_s*, uint32_t);
-char* blink_leaf_search(b_link_leaf_page_s*, uint32_t, uint32_t*);
-
+uint32_t blink_pivot_scan(b_link_pivot_page_s*, uint32_t);
+char* blink_leaf_scan(b_link_leaf_page_s*, uint32_t, uint32_t*);
 char blink_entry_insert_to_pivot(b_link_pivot_page_s*, uint32_t, uint32_t);
 char blink_entry_insert_to_leaf(b_link_leaf_page_s*, char*);
 char blink_entry_remove_from_pivot(b_link_pivot_page_s*, uint32_t);
 char blink_entry_remove_from_leaf(b_link_leaf_page_s*, uint32_t);
 char blink_entry_update_pivot(b_link_pivot_page_s*, uint32_t, uint32_t);
 char blink_entry_update_leaf(b_link_leaf_page_s*, uint32_t, char*);
+bool blink_head_init(b_link_leaf_page_s*, uint32_t, uint16_t, uint16_t);
+
+bool blink_is_node_safe(void*, uint16_t);
+void blink_pivot_set(b_link_pivot_page_s*, int, uint32_t, uint32_t);
+
+uint32_t blink_leaf_split(void*, void*, char*, int);
+uint32_t blink_pivot_split(void*, void*, uint32_t, uint32_t);
 
 #endif /* B_PAGE_H */

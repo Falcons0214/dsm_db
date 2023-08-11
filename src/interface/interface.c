@@ -1,3 +1,4 @@
+#include <complex.h>
 #include <limits.h>
 #include <pthread.h>
 #include <stdbool.h>
@@ -13,6 +14,7 @@
 #include "../../include/net.h"
 #include "../../common/hash_table.h"
 #include "../../common/avl.h"
+#include "../index/b_page.h"
 
 #define FROMATTRGETPID(c) *((int*)&c[ATTRSIZE])
 
@@ -219,15 +221,13 @@ block_s* db_1_topen(pool_mg_s *pm, disk_mg_s *dm, char *tname)
         if (!search_table_from_pdir(pm, dm, tname, &table_pid))
             return NULL;
         tblock = mp_page_open(pm, dm, table_pid);
-    }else
-        return tblock;
-
-    if (!tblock) {
-        // err handler, for table page open failed.
-        return NULL;
+        if (!tblock) {
+            // err handler, for table page open failed.
+            return NULL;
+        }
+        djb2_push(pm->hash_table, tname, tblock);
     }
-    
-    djb2_push(pm->hash_table, tname, tblock);
+
     return tblock;
 }
 
@@ -248,7 +248,7 @@ bool db_1_tcreate(pool_mg_s *pm, disk_mg_s *dm, char *tname, char **attrs, int a
 }
 
 /*
- * We didn't check is still have other user reading or doing other operations, 
+ * Didn't check is still have other user reading or doing other operations, 
  * when we exectue delete operation.
  */
 bool db_1_tdelete(pool_mg_s *pm, disk_mg_s *dm, char *tname)
@@ -316,14 +316,14 @@ void db_1_tread(pool_mg_s *pm, disk_mg_s *dm, int fd, char *tname, char **attrs,
 }
 
 /*
- * Not thread safe.
+ * !! No-thread safe for delete occur on same table.
  */
 bool db_1_tinsert(pool_mg_s *pm, disk_mg_s *dm, char *tname, char **attrs, int *types)
 {
     block_s *root_table = db_1_topen(pm, dm, tname);
     block_s *attr_tblock, *prev_block, *data_block;
     char buf6[ATTRTABLEENTRYSIZE], *tmp;
-    int brk;
+    int brk, attr_table_records;
     uint16_t remain;
 
     if (!root_table) {
@@ -343,38 +343,49 @@ bool db_1_tinsert(pool_mg_s *pm, disk_mg_s *dm, char *tname, char **attrs, int *
         brk = 1;
         h = 0;
         while (brk) {
-            for (; h < attr_tblock->page->record_num; h ++) {
-                tmp = p_entry_read_by_index(attr_tblock->page, h);
-                if (!tmp) continue;
+            // for (; h < attr_tblock->page->record_num; h ++) {
+            //     tmp = p_entry_read_by_index(attr_tblock->page, h);
+            //     if (!tmp) continue;
+            //     remain = *((uint16_t*)&tmp[4]);
+
+            //     /*
+            //      * If page have seat, insert value in page.
+            //      */
+            //     if (remain < get_max_entries(types[i-1])) {
+            //         brk = 0;
+            //         remain ++;
+            //         memcpy(buf6, tmp, sizeof(int));
+            //         memcpy(&buf6[4], &remain, sizeof(uint16_t));
+            //         p_entry_update_by_index(attr_tblock->page, buf6, h);
+            //         DIRTYSET(&attr_tblock->flags);
+
+            //         data_block = mp_page_open(pm, dm, *((int*)tmp));
+            //         p_entry_insert(data_block->page, attrs[i-1], types[i-1]);
+            //         DIRTYSET(&data_block->flags);
+            //         break;
+            //     }
+            // }
+            attr_table_records = attr_tblock->page->record_num;
+            if (attr_table_records < get_max_entries(ATTRTABLEENTRYSIZE)) {
+                tmp = p_entry_read_by_index(attr_tblock->page, attr_table_records - 1);
                 remain = *((uint16_t*)&tmp[4]);
 
-                /*
-                 * If page have seat, insert value in page.
-                 */
                 if (remain < get_max_entries(types[i-1])) {
                     brk = 0;
                     remain ++;
                     memcpy(buf6, tmp, sizeof(int));
                     memcpy(&buf6[4], &remain, sizeof(uint16_t));
-                    mp_require_page_wlock(attr_tblock);
-                    p_entry_update_by_index(attr_tblock->page, buf6, h);
+                    p_entry_update_by_index(attr_tblock->page, buf6, attr_table_records - 1);
                     DIRTYSET(&attr_tblock->flags);
-                    mp_release_page_wlock(attr_tblock);
 
                     data_block = mp_page_open(pm, dm, *((int*)tmp));
-                    mp_require_page_wlock(data_block);
                     p_entry_insert(data_block->page, attrs[i-1], types[i-1]);
                     DIRTYSET(&data_block->flags);
-                    mp_release_page_wlock(data_block);
-                    break;
                 }
             }
             
-            /*
-             * 
-             */
             if (brk) {
-                if (h < get_max_entries(ATTRTABLEENTRYSIZE)) {
+                if (attr_table_records < get_max_entries(ATTRTABLEENTRYSIZE)) {
                     data_block = mp_page_create(pm, dm, DATAPAGE, types[i-1]);
                     memset(buf6, 0, ATTRTABLEENTRYSIZE);
                     memcpy(buf6, &(data_block->page->page_id), sizeof(uint32_t));
@@ -389,14 +400,14 @@ bool db_1_tinsert(pool_mg_s *pm, disk_mg_s *dm, char *tname, char **attrs, int *
                         memset(buf6, 0, ATTRTABLEENTRYSIZE);
                         memcpy(buf6, &(data_block->page->page_id), sizeof(uint32_t));
                         p_entry_insert(attr_tblock->page, buf6, ATTRTABLEENTRYSIZE);
-                    }else{
-                        attr_tblock = mp_page_open(pm, dm, attr_tblock->page->next_page_id);
-                        if (!attr_tblock) {
-                            // attribute table page open failed.
-                            return false;
-                        }
                     }
-                    h = 0;
+                    // else{
+                    //     attr_tblock = mp_page_open(pm, dm, attr_tblock->page->next_page_id);
+                    //     if (!attr_tblock) {
+                    //         // attribute table page open failed.
+                    //         return false;
+                    //     }
+                    // }
                 }
             }
         }
@@ -473,7 +484,8 @@ char* __do_rep(pool_mg_s *pm, disk_mg_s *dm, block_s *attr_tblock)
 }
 
 /*
- * Only delete record from table, didn't recycle useless pages.
+ * Delete entry by it index, and bring last entry to fill the seat.
+ * !! No-thread safe for delete occur on same table.
  */
 bool db_1_tremove_by_index(pool_mg_s *pm, disk_mg_s *dm, char *tname, int record_index)
 {
@@ -601,12 +613,206 @@ char* db_1_tschema(pool_mg_s *pm, disk_mg_s *dm, char *tname)
 }
 
 /*---------- <High level function call for index operations> ----------*/
-void db_1_icreate(pool_mg_s *pm, disk_mg_s *dm, char *tname, char **attrs, int attrs_num, int *types)
-{
 
+#define TO_BLINK_LEAF(x) ((b_link_leaf_page_s*)(x->page))
+#define TO_BLINK_PIVOT(x) ((b_link_pivot_page_s*)(x->page))
+
+#define GET_BLINK_PAR(x) ((TO_BLINK_LEAF(x)->header).ppid)
+#define GET_BLINK_PID(x) ((TO_BLINK_LEAF(x)->header).pid)
+#define GET_BLINK_PAGETYPE(x) ((TO_BLINK_LEAF(x)->header).page_type)
+
+#define IS_ROOT(x) (GET_BLINK_PAGETYPE(x) & ROOT_PAGE)
+#define IS_LEAF(x) (GET_BLINK_PAGETYPE(x) & LEAF_PAGE)
+#define IS_PIVOT(x) (GET_BLINK_PAGETYPE(x) & PIVOT_PAGE) 
+
+static char* __get_title(int x)
+{
+    switch (x) {
+        case 0:
+            return B0;
+        case 1:
+            return B1;
+        case 2:
+            return B2;
+    }
+    return BR;
 }
 
-void db_1_iopen(pool_mg_s *pm, disk_mg_s *dm, char *tname)
+bool db_1_icreate(pool_mg_s *pm, disk_mg_s *dm, char *tname, char **attrs, int attrs_num, int *types)
+{
+    block_s *pdir = search_table_from_pdir(pm, dm, tname, NULL);
+    if (pdir) {
+        // err handler, table already exist.
+        return false;
+    }
+
+    block_s *blink_table = mp_page_create(pm, dm, TABLEPAGE, RTABLEENYRTSIZE);
+    block_s *blink_root_block;
+    b_link_leaf_page_s *b_leaf;
+    char buf32[RTABLEENYRTSIZE], *tmp;
+    int entry_width = 0, value, i;
+
+    if (blink_table) {
+        // err handler, table create error.
+        return false;
+    }
+    DIRTYSET(&blink_table->flags);
+
+    for (int i = 0 ; i < attrs_num; i ++)
+        entry_width += types[i];
+    blink_root_block = mp_index_create(pm, dm, ROOT_PAGE | LEAF_PAGE, entry_width);
+    if (!blink_root_block){
+        // err handler, blink root create error.
+        return false;
+    }
+    b_leaf = ((b_link_leaf_page_s*)(blink_root_block->page));
+    DIRTYSET(&blink_root_block->flags);
+
+    for (i = 0; i < B_LINK_HEAD_USED_SIZE; i ++) {
+        memset(buf32, '\0', RTABLEENYRTSIZE);
+        tmp = __get_title(i);
+        if (i == 0){
+            value = b_leaf->header.pid;
+            tmp = tname;
+        }else if(i == 1)
+            value = attrs_num;
+        else
+            value = 0;
+        memcpy(buf32, tmp, strlen(tmp));
+        memcpy(&buf32[ATTRSIZE], &value, sizeof(uint32_t));
+        p_entry_insert(blink_table->page, buf32, RTABLEENYRTSIZE);
+    }
+ 
+    for (value = 0; i < B_LINK_INFOSIZE; i++) {
+        memset(buf32, '\0', RTABLEENYRTSIZE);
+        memcpy(buf32, tmp, 7);
+        memcpy(&buf32[ATTRSIZE], &value, sizeof(uint32_t));
+        p_entry_insert(blink_table->page, buf32, RTABLEENYRTSIZE);
+    }
+
+    for (int h = 0; h < attrs_num; h ++) {
+        memset(buf32, '\0', RTABLEENYRTSIZE);
+        memcpy(buf32, attrs[h], strlen(attrs[h]));
+        memcpy(&buf32[ATTRSIZE], &types[h], sizeof(uint32_t));
+        p_entry_insert(blink_table->page, buf32, RTABLEENYRTSIZE);
+    }
+
+    djb2_push(pm->hash_table, tname, blink_table);
+    return true;
+}
+
+void db_1_iinsert(pool_mg_s *pm, disk_mg_s *dm, char *tname, char *entry, int key)
+{
+    block_s *blink_table, *cur, *old, *sibling;
+    b_link_leaf_page_s *leaf;
+    b_link_pivot_page_s *pivot;
+    char *tmp, is_root = 0, buf32[RTABLEENYRTSIZE], rev;
+    uint32_t page_id, tmp_key, tmp_cpid;
+    uint16_t node_type;
+
+    blink_table = db_1_topen(pm, dm, tname);
+    if (!blink_table) {
+        // err handler, index open failed.
+    }
+
+    tmp = p_entry_read_by_index(blink_table->page, B_LINK_PID);
+    cur = mp_page_open(pm, dm, FROMATTRGETPID(tmp));
+    if (!cur) {
+        // err handler, index root open failed.
+    }
+
+    /*
+     * Use pivot scan find target leaf node.
+     */
+    while (!IS_LEAF(cur)) {
+        page_id = blink_pivot_scan(TO_BLINK_PIVOT(cur), key);
+        if (page_id == PAGEIDNULL) {}
+        cur = mp_page_open(pm, dm, page_id);
+    }
+
+    /*
+     * Check leaf node is it full ?
+     * If is still have seat after insert, it is safe
+     * the operation done.
+     *
+     * If full we need separate it, then push the key
+     * of middle entry to the parent node, then check
+     * pivot node is confrom the property, if violate
+     * repeat the step until to safe.
+     */
+    tmp_key = tmp_cpid = PAGEIDNULL;
+    mp_require_page_wlock(cur);
+BLINK_INSERTIONAGAIN:
+    node_type = GET_BLINK_PAGETYPE(cur);
+    if (blink_is_node_safe((void*)cur->page, node_type) || is_root) {
+
+        /*
+         * If cur is not root, insert key pair or data entry.
+         */
+        if (is_root != 1) {
+            rev = ((node_type & PIVOT_PAGE) == PIVOT_PAGE) ? \
+                blink_entry_insert_to_pivot(TO_BLINK_PIVOT(cur), tmp_key, GET_BLINK_PID(sibling)) : \
+                blink_entry_insert_to_leaf(TO_BLINK_LEAF(cur), entry);
+
+            // err handler, key duplicate.
+            if (rev == BLL_INSERT_KEY_DUP) {
+                return;
+            }else if (rev == BLP_INSERT_KEY_DUP) {
+                return;
+            }
+        }
+        mp_release_page_wlock(cur);
+
+        /*
+         * Update tabe b_link_tree page id. 
+         */
+        if (is_root) {
+            memset(buf32, '\0', RTABLEENYRTSIZE);
+            memcpy(buf32, tname, strlen(tname));
+            memcpy(&buf32[ATTRSIZE], &GET_BLINK_PID(cur), sizeof(uint32_t));
+            mp_require_page_wlock(blink_table);
+            p_entry_update_by_index(blink_table->page, buf32, B_LINK_PID);
+            mp_release_page_wlock(blink_table);
+            DIRTYSET(&blink_table->flags);
+        }
+    }else{        
+        sibling = mp_index_create(pm,dm, INVALID_PAGE, BLINKPAIRSIZE);
+        if (!sibling) {
+            // err handler, sibling create error.
+        }
+
+        tmp_key = (IS_LEAF(cur)) ? blink_leaf_split(cur, sibling, entry, key) : \
+                                   blink_pivot_split(cur, sibling, tmp_key, tmp_cpid);
+
+        old = cur;
+        tmp_cpid = GET_BLINK_PID(sibling);
+        if (GET_BLINK_PAR(cur) == PAGEIDNULL) {
+            is_root = 1;
+            cur = mp_index_create(pm, dm, ROOT_PAGE | PIVOT_PAGE, BLINKPAIRSIZE);
+
+            
+
+            DIRTYSET(&cur->flags);
+        }else{
+            DIRTYSET(&old->flags);
+            DIRTYSET(&sibling->flags);
+            cur = mp_page_open(pm, dm, GET_BLINK_PAR(cur));
+            mp_require_page_wlock(cur);
+        }
+
+        mp_release_page_wlock(old);
+        goto BLINK_INSERTIONAGAIN;
+    }
+
+    return; // Success
+}
+
+void db_1_iremove_by_pkey(pool_mg_s *pm, disk_mg_s *dm, char *tname, int pkey)
+{
+    
+}
+
+void db_1_isearch_by_pkey(pool_mg_s *pm, disk_mg_s *dm, char *tname, int pkey)
 {
 
 }
@@ -617,16 +823,6 @@ void db_1_idelete(pool_mg_s *pm, disk_mg_s *dm, char *tname)
 }
 
 void db_1_iread(pool_mg_s *pm, disk_mg_s *dm, int fd, char *tname, char **attrs, int limit)
-{
-
-}
-
-void db_1_iinsert(pool_mg_s *pm, disk_mg_s *dm, char *tname, char **attrs)
-{
-
-}
-
-void db_1_iremove(pool_mg_s *pm, disk_mg_s *dm, char *tname, char **attrs)
 {
 
 }
