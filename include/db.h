@@ -34,9 +34,16 @@
 #define B_LINK_PID 0
 #define B_LINK_ATTRSNUM 1
 #define B_LINK_RECORDNUM 2
-#define B_LINK_ENTRYSIZE 3
+#define B_LINK_INFOSIZE 17
+#define B_LINK_MAX_ATTR 677 - B_LINK_INFOSIZE
 
-#define B_LINK_MAX_ATTR 677 - 4
+#define B_LINK_HEAD_USED_SIZE 3
+#define B0 "BLINK_PAGEID"
+#define B1 "ATTRS_NUM"
+#define B2 "RECORD_NUM"
+#define BR "RESERVE"
+
+#define BLINKSTACKSIZE 256
 
 struct db_s
 {

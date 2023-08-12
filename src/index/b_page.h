@@ -12,7 +12,9 @@ typedef struct b_link_pair b_link_pair_s;
 
 #define BLINKPAIRSIZE 8
 #define BLINKHEADERSIZE sizeof(b_link_page_header_s)
-#define PAIRENTRYS (int)((PAGESIZE - BLINKHEADERSIZE) / BLINKPAIRSIZE)
+// #define PAIRENTRYS (int)((PAGESIZE - BLINKHEADERSIZE) / BLINKPAIRSIZE)
+#define PAIRENTRYS 7
+
 
 #define BLINK_ENTRY_LIMIT PAGESIZE - BLINKHEADERSIZE
 #define BLINK_LEAF_DATA_SIZE PAGESIZE - BLINKHEADERSIZE
@@ -22,6 +24,10 @@ typedef struct b_link_pair b_link_pair_s;
 #define LEAF_PAGE 0x01
 #define PIVOT_PAGE 0x02
 #define ROOT_PAGE 0x04
+
+#define BLINK_IS_LEAF(x) ((x) & LEAF_PAGE)
+#define BLINK_IS_PIVOT(x) ((x)& PIVOT_PAGE)
+#define BLINK_IS_ROOT(x) ((x) & ROOT_PAGE)
 
 /*
  * b_link_pivot_node insert return value
@@ -70,9 +76,9 @@ struct b_link_page_header
     uint32_t pid;
     uint32_t ppid;
     uint32_t npid;
+    uint16_t page_type;
     uint16_t records;
     uint16_t width;
-    uint16_t page_type;
 } __attribute__ ((packed));
 
 struct b_link_pivot_page
@@ -108,7 +114,7 @@ bool blink_head_init(b_link_leaf_page_s*, uint32_t, uint16_t, uint16_t);
 bool blink_is_node_safe(void*, uint16_t);
 void blink_pivot_set(b_link_pivot_page_s*, int, uint32_t, uint32_t);
 
-uint32_t blink_leaf_split(void*, void*, char*, int);
+uint32_t blink_leaf_split(void*, void*, char*, uint32_t);
 uint32_t blink_pivot_split(void*, void*, uint32_t, uint32_t);
 
 #endif /* B_PAGE_H */

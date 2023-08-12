@@ -1,3 +1,4 @@
+#include <signal.h>
 #include <string.h>
 #include <stdint.h>
 #include <stdbool.h>
@@ -221,7 +222,6 @@ char blink_entry_remove_from_leaf(b_link_leaf_page_s *page, uint32_t key)
 
 char blink_entry_update_pivot(b_link_pivot_page_s *page, uint32_t key, uint32_t cpid)
 {
-
     return BLP_UPDATE_ACCEPT;
 }
 
@@ -235,12 +235,13 @@ char blink_entry_update_leaf(b_link_leaf_page_s *page, uint32_t key, char *data)
 
 bool blink_is_node_safe(void *page, uint16_t page_type)
 {
-    if ((page_type & PIVOT_PAGE) == PIVOT_PAGE)
-        return (BLINKHEADERSIZE + ((((b_link_pivot_page_s*)page)->header.records + 1) * \
-                ((b_link_pivot_page_s*)page)->header.width) >= PAGESIZE) ? false : true;
-    else 
-        return ((((b_link_leaf_page_s*)page)->header.records + 1) == PAIRENTRYS) ? false : true;
-
+    if (BLINK_IS_PIVOT(page_type)) {
+        b_link_pivot_page_s *pivot = (b_link_pivot_page_s*)page;
+        return ((pivot->header.records + 1) >= PAIRENTRYS) ? false : true;
+    }else{
+        b_link_leaf_page_s *leaf = (b_link_leaf_page_s*)page;
+        return (((leaf->header.records + 1) * leaf->header.width + BLINKHEADERSIZE) >= PAGESIZE) ? false : true;
+    }
 }
 
 void blink_pivot_set(b_link_pivot_page_s *page, int key, uint32_t pid_left, uint32_t pid_right)
@@ -249,4 +250,54 @@ void blink_pivot_set(b_link_pivot_page_s *page, int key, uint32_t pid_left, uint
     page->pairs[0].cpid = pid_left;
     page->pairs[1].cpid = pid_right;
     page->header.records ++;
+}
+
+#define GET_DATA_FROM_LEAF(start, index, width) ((char*)(start) + ((index) * (width)))
+
+uint32_t blink_leaf_split(void *A, void *B, char *entry, uint32_t key)
+{
+    b_link_leaf_page_s *from = (b_link_leaf_page_s*)A;
+    b_link_leaf_page_s *to = (b_link_leaf_page_s*)B;
+    int mid = (int)from->header.records / 2 + 1, width = from->header.width;
+    uint32_t A_max;
+    char *tmp;
+
+    for (int i = mid; i < from->header.records; i ++) {
+        tmp = GET_DATA_FROM_LEAF(from->data, i, width);
+        blink_entry_insert_to_leaf(to, tmp);
+    }
+    from->header.npid = to->header.pid;
+
+    for (int i = mid; i < from->header.records; i ++)
+        memset(GET_DATA_FROM_LEAF(from->data, i, width), '\0', width);
+    from->header.records = mid;
+
+    A_max = *((uint32_t*)GET_DATA_FROM_LEAF(from->data, mid - 1, width));
+    blink_entry_insert_to_leaf((key > A_max) ? to : from, entry);
+    return A_max;
+}
+
+uint32_t blink_pivot_split(void *A, void *B, uint32_t key, uint32_t cpid)
+{
+    b_link_pivot_page_s *from = (b_link_pivot_page_s*)A;
+    b_link_pivot_page_s *to = (b_link_pivot_page_s*)B;
+    int mid = (int)from->header.records / 2 + 1, width = from->header.width;
+    uint32_t A_max;
+    
+    blink_pivot_set(to, from->pairs[mid].key, from->pairs[mid].cpid, \
+                    from->pairs[mid + 1].cpid);
+    for (int i = mid + 1; i < from->header.records; i ++)
+        blink_entry_insert_to_pivot(to, from->pairs[i].key, from->pairs[i + 1].cpid);
+    from->header.npid = to->header.pid;
+
+    for (int i = mid; i < from->header.records; i ++)
+        from->pairs[i].key = from->pairs[i].cpid = PAGEIDNULL;
+    from->pairs[from->header.records].cpid = PAGEIDNULL;
+    
+    mid --;
+    from->header.records = mid;
+    A_max = from->pairs[mid].key;
+    from->pairs[mid].key = PAGEIDNULL;
+    blink_entry_insert_to_pivot((key > A_max) ? to : from, key, cpid);
+    return A_max;
 }
