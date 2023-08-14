@@ -616,16 +616,20 @@ char* db_1_tschema(pool_mg_s *pm, disk_mg_s *dm, char *tname)
 #define TO_BLINK_LEAF(x) ((b_link_leaf_page_s*)((x)->page))
 #define TO_BLINK_PIVOT(x) ((b_link_pivot_page_s*)((x)->page))
 
+#define GET_BLINK_NPID(x) ((TO_BLINK_LEAF(x)->header).npid)
 #define GET_BLINK_PAR(x) ((TO_BLINK_LEAF(x)->header).ppid)
 #define GET_BLINK_PID(x) ((TO_BLINK_LEAF(x)->header).pid)
 #define GET_BLINK_PAGETYPE(x) ((TO_BLINK_LEAF(x)->header).page_type)
 #define GET_BLINK_WIDTH(x) ((TO_BLINK_LEAF(x)->header).width)
 
+#define GET_PIVOT_UPBOUND(x) ((x)->pairs[PIVOTUPBOUNDINDEX].key)
+#define GET_LEAF_UPBOUND(x) ((x)->_upbound)
+
 #define SET_BLINK_PAR(node, id) ((TO_BLINK_PIVOT(node)->header).ppid = id)
 
-#define IS_ROOT(x) (GET_BLINK_PAGETYPE(x) & ROOT_PAGE)
+// #define IS_ROOT(x) (GET_BLINK_PAGETYPE(x) & ROOT_PAGE)
 #define IS_LEAF(x) (GET_BLINK_PAGETYPE(x) & LEAF_PAGE)
-#define IS_PIVOT(x) (GET_BLINK_PAGETYPE(x) & PIVOT_PAGE) 
+// #define IS_PIVOT(x) (GET_BLINK_PAGETYPE(x) & PIVOT_PAGE) 
 
 static char* __get_title(int x)
 {
@@ -705,7 +709,35 @@ bool db_1_icreate(pool_mg_s *pm, disk_mg_s *dm, char *tname, char **attrs, int a
     return true;
 }
 
-void db_1_iinsert(pool_mg_s *pm, disk_mg_s *dm, char *tname, char *entry, int key)
+block_s* __move_right(pool_mg_s *pm, disk_mg_s *dm, block_s *cur, uint32_t key)
+{
+    uint32_t upbound;
+    block_s *next;
+
+BLINKMOVERIGHTAGAIN:
+    upbound = (BLINK_IS_PIVOT(GET_BLINK_PAGETYPE(cur))) ? \
+               GET_PIVOT_UPBOUND(TO_BLINK_PIVOT(cur)) : GET_LEAF_UPBOUND(TO_BLINK_LEAF(cur));
+
+    if (upbound != PAGEIDNULL && key > upbound){
+        next = mp_page_open(pm, dm, GET_BLINK_NPID(cur));
+        mp_release_page_wlock(cur);
+        if (!cur) {
+            return NULL;
+        }
+        cur = next;
+        mp_require_page_wlock(cur);
+        goto BLINKMOVERIGHTAGAIN;
+    }
+    return cur;
+}
+
+/*
+ * !! Pivot node parent pointer will be change when 
+ * have the new entry go through the pivot, and it 
+ * parent pointer is not equal the pointer we pop f
+ * rom stack, then we update it.
+ */
+void db_1_iinsert(pool_mg_s *pm, disk_mg_s *dm, char *tname, char *entry, uint32_t key)
 {
     block_s *blink_table, *cur, *old, *sibling;
     b_link_leaf_page_s *leaf;
@@ -748,6 +780,11 @@ void db_1_iinsert(pool_mg_s *pm, disk_mg_s *dm, char *tname, char *entry, int ke
      */
     tmp_key = tmp_cpid = PAGEIDNULL;
     mp_require_page_wlock(cur);
+    cur = __move_right(pm, dm, cur, key);
+    if (!cur) {
+        return;
+    }
+
 BLINK_INSERTIONAGAIN:
     node_type = GET_BLINK_PAGETYPE(cur);
     if (blink_is_node_safe((void*)cur->page, node_type)) {
@@ -769,14 +806,16 @@ BLINK_INSERTIONAGAIN:
 
             // err handler, key duplicate.
             if (rev == BLL_INSERT_KEY_DUP) {
+                mp_release_page_wlock(cur);
                 return;
             }else if (rev == BLP_INSERT_KEY_DUP) {
+                mp_release_page_wlock(cur);
                 return;
             }
             mp_release_page_wlock(cur);
             DIRTYSET(&cur->flags);
         }
-    }else{        
+    }else{    
         sibling = mp_index_create(pm,dm, (IS_LEAF(cur) ? LEAF_PAGE : PIVOT_PAGE), GET_BLINK_WIDTH(cur));
         if (!sibling) {
             // err handler, sibling create error.
@@ -786,10 +825,11 @@ BLINK_INSERTIONAGAIN:
                                    blink_pivot_split(cur->page, sibling->page, tmp_key, tmp_cpid);
 
         old = cur;
+        tmp_cpid = GET_BLINK_PID(sibling);
         DIRTYSET(&old->flags);
         DIRTYSET(&sibling->flags);
-        tmp_cpid = GET_BLINK_PID(sibling);
-        if (GET_BLINK_PAR(cur) == PAGEIDNULL) {
+
+        if (GET_BLINK_PAR(old) == PAGEIDNULL) {
             is_root = 1;
             cur = mp_index_create(pm, dm, ROOT_PAGE | PIVOT_PAGE, BLINKPAIRSIZE);
             GET_BLINK_PAGETYPE(old) &= ~ROOT_PAGE;
@@ -797,12 +837,16 @@ BLINK_INSERTIONAGAIN:
             blink_pivot_set(TO_BLINK_PIVOT(cur), tmp_key, GET_BLINK_PID(old), GET_BLINK_PID(sibling));
             DIRTYSET(&cur->flags);
         }else{
-            if (GET_BLINK_PAR(cur) != _stack[--stack_index])
-                SET_BLINK_PAR(cur, _stack[stack_index]);
+            if (GET_BLINK_PAR(old) != _stack[--stack_index])
+                SET_BLINK_PAR(old, _stack[stack_index]);
             cur = mp_page_open(pm, dm, _stack[stack_index]);
             mp_require_page_wlock(cur);
+
+            cur = __move_right(pm, dm, cur, tmp_key);
         }
+
         SET_BLINK_PAR(sibling, GET_BLINK_PID(cur));
+
         mp_release_page_wlock(old);
         goto BLINK_INSERTIONAGAIN;
     }
@@ -818,14 +862,14 @@ BLINK_INSERTIONAGAIN:
     return; // Success
 }
 
-void db_1_iremove_by_pkey(pool_mg_s *pm, disk_mg_s *dm, char *tname, int pkey)
+void db_1_isearch(pool_mg_s *pm, disk_mg_s *dm, char *tname, int pkey)
 {
-    
+
 }
 
-void db_1_isearch_by_pkey(pool_mg_s *pm, disk_mg_s *dm, char *tname, int pkey)
+void db_1_iremove(pool_mg_s *pm, disk_mg_s *dm, char *tname, int pkey)
 {
-
+    
 }
 
 void db_1_idelete(pool_mg_s *pm, disk_mg_s *dm, char *tname)

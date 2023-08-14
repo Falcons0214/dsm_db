@@ -15,7 +15,6 @@ typedef struct b_link_pair b_link_pair_s;
 // #define PAIRENTRYS (int)((PAGESIZE - BLINKHEADERSIZE) / BLINKPAIRSIZE)
 #define PAIRENTRYS 7
 
-
 #define BLINK_ENTRY_LIMIT PAGESIZE - BLINKHEADERSIZE
 #define BLINK_LEAF_DATA_SIZE PAGESIZE - BLINKHEADERSIZE
 #define BLINK_PIVOT_PADDING_SIZE PAGESIZE - (PAIRENTRYS * BLINKPAIRSIZE + BLINKHEADERSIZE)
@@ -81,6 +80,7 @@ struct b_link_page_header
     uint16_t width;
 } __attribute__ ((packed));
 
+#define PIVOTUPBOUNDINDEX PAIRENTRYS - 1
 struct b_link_pivot_page
 {
     b_link_page_header_s header;
@@ -91,6 +91,7 @@ struct b_link_pivot_page
 struct b_link_leaf_page
 {
     b_link_page_header_s header;
+    uint32_t _upbound;
     char data[BLINK_LEAF_DATA_SIZE];
 } __attribute__ ((packed));
 

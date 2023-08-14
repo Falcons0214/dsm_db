@@ -26,6 +26,7 @@ void blink_leaf_init(b_link_leaf_page_s *page, uint32_t pid, uint32_t ppid, uint
     page->header.npid = npid;
     page->header.width = width;
     page->header.page_type = type;
+    page->_upbound = PAGEIDNULL;
     page->header.records = 0;
     memset(page->data, '\0', BLINK_LEAF_DATA_SIZE);
 }
@@ -273,6 +274,7 @@ uint32_t blink_leaf_split(void *A, void *B, char *entry, uint32_t key)
     from->header.records = mid;
 
     A_max = *((uint32_t*)GET_DATA_FROM_LEAF(from->data, mid - 1, width));
+    from->_upbound = A_max;
     blink_entry_insert_to_leaf((key > A_max) ? to : from, entry);
     return A_max;
 }
@@ -298,6 +300,7 @@ uint32_t blink_pivot_split(void *A, void *B, uint32_t key, uint32_t cpid)
     from->header.records = mid;
     A_max = from->pairs[mid].key;
     from->pairs[mid].key = PAGEIDNULL;
+    from->pairs[PAIRENTRYS-1].key = A_max; // Pivot node upper bound store in last entry (Reserve).
     blink_entry_insert_to_pivot((key > A_max) ? to : from, key, cpid);
     return A_max;
 }

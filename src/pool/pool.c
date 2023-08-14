@@ -634,7 +634,7 @@ block_s* mp_index_create(pool_mg_s *pm, disk_mg_s *dm, uint16_t page_type, uint1
 
     gpt_push(&pm->gpt, a_node);
 
-    if (page_type == PIVOT_PAGE)
+    if (BLINK_IS_PIVOT(page_type))
         blink_pivot_init((b_link_pivot_page_s*)block->page, page_id, PAGEIDNULL, PAGEIDNULL, page_type);
     else
         blink_leaf_init((b_link_leaf_page_s*)block->page, page_id, PAGEIDNULL, PAGEIDNULL, entry_width, page_type);
