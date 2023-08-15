@@ -77,6 +77,11 @@ bool show_page_info(page_s *page)
         printf("        -> Page npid: %d\n", b->header.npid);
         printf("        -> Page recrod: %d\n", b->header.records);
         printf("        -> Page data_width: %d\n", b->header.width);
+        printf("        -> Page ty: %d\n", b->header.page_type);
+        if(BLINK_IS_LEAF(b->header.page_type))
+            printf("        -> Page leaf Upper Bound: %d\n", b->_upbound);
+        else
+            printf("        -> Page pivot Upper Bound: %d\n", ((b_link_pivot_page_s*)b)->pairs[PIVOTUPBOUNDINDEX].key);
         printf("        -> Page tpye: <%s>\n", b_type_str(b->header.page_type));
         return false;
     }else{
@@ -459,15 +464,16 @@ void test_b_link_insert()
     char *attrns[3];
     int types[3] = {4, 20, PAD};
 
-    for (int i = 0; i < 3; i ++)
-        attrns[i] = (char*)malloc(sizeof(char) * 28);
+    for (int i = 0 ; i < attrs; i ++) {
+        attrns[i] = malloc(sizeof(char) * 28);
+        memset(attrns[i], '\0', 28);
+    }
 
     sprintf(attrns[0], "PKEY");
     sprintf(attrns[1], "Name");
     sprintf(attrns[2], "Descript");
 
     bool ac = db_1_icreate(pm, dm, tname, attrns, attrs, types);
-
     if (ac) {
         struct car c1;
         int num = 36;
@@ -481,8 +487,56 @@ void test_b_link_insert()
             db_1_iinsert(pm, dm, tname, (char*)&c1, c1.ckey);
         }
     }
-
     printf("B_Link test End\n");
+}
+
+void* binsert(void *arg)
+{
+    char *tname = "blink001";
+    int start = *((int*)arg);
+    int n = 16;
+    struct car c1;
+
+
+    for (int i = start; i < (start + n); i ++) {
+        c1.ckey = i;
+        memset(c1.name, 0, 20);
+        memset(c1.padding, 0, PAD);
+        sprintf(c1.name, "CarZZ:%d", 900 + i);
+        memset(c1.padding, 'A', 30);
+        db_1_iinsert(pm, dm, tname, (char*)&c1, i);
+    }
+    return NULL;
+}
+
+void test_b_link_insert_con()
+{
+    int attrs = 3;
+    char *tname = "blink001";
+    char *attrns[3];
+    int types[3] = {4, 20, PAD};
+    
+    for (int i = 0 ; i < attrs; i ++) {
+        attrns[i] = malloc(sizeof(char) * 28);
+        memset(attrns[i], '\0', 28);
+    }
+    sprintf(attrns[0], "PKEY");
+    sprintf(attrns[1], "Name");
+    sprintf(attrns[2], "Descript");
+    
+    int pnum = 2, p[2] = {10, 30};
+    pthread_t pids[pnum];
+
+    bool ac = db_1_icreate(pm, dm, tname, attrns, attrs, types);
+
+    if (ac) {
+        for (int i = 0; i < pnum; i ++)
+            pthread_create(&pids[i], NULL, binsert, &p[i]);
+        for (int i = 0; i < pnum; i ++)
+            pthread_join(pids[i], NULL);
+    }
+
+    // printf("B_Link Insert concurrency test End\n");
 }
 
 int main()
@@ -490,7 +544,6 @@ int main()
     bool flag;
     dm = dk_dm_open(&flag);
     pm = mp_pool_open(flag, dm);
-
     // show_size();
     // show_pool_info();
 
@@ -506,15 +559,15 @@ int main()
     // table_remove();
     // db_1_tdelete(pm, dm, "table_0214");
 
-    test_b_link_insert();
+    // test_b_link_insert();
+    test_b_link_insert_con();
 
     show_pages_info(2);
 
     // printf("\n%s\n", db_1_tschema(pm, dm, "table_0214"));
 
-
     mp_pool_close(pm, dm);
     dk_dm_close(dm);
-    printf("END\n");
+    // printf("END\n");
     return 0;
 }
