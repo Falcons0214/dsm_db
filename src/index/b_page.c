@@ -28,7 +28,8 @@ void blink_leaf_init(b_link_leaf_page_s *page, uint32_t pid, uint32_t ppid, uint
     page->header.page_type = type;
     page->_upbound = PAGEIDNULL;
     page->header.records = 0;
-    memset(page->data, '\0', BLINK_LEAF_DATA_SIZE);
+    for (int i = 0; i < BLINK_LEAF_DATA_SIZE; i++)
+        page->data[i] = 0;
 }
 
 void blink_pivot_init(b_link_pivot_page_s *page, uint32_t pid, uint32_t ppid, uint32_t npid, uint16_t type)
