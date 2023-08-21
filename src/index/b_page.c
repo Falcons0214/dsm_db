@@ -24,6 +24,7 @@ void blink_leaf_init(b_link_leaf_page_s *page, uint32_t pid, uint32_t ppid, uint
     page->header.pid = pid;
     page->header.ppid = ppid;
     page->header.npid = npid;
+    page->header.bpid = PAGEIDNULL;
     page->header.width = width;
     page->header.page_type = type;
     page->_upbound = PAGEIDNULL;
@@ -37,6 +38,7 @@ void blink_pivot_init(b_link_pivot_page_s *page, uint32_t pid, uint32_t ppid, ui
     page->header.pid = pid;
     page->header.ppid = ppid;
     page->header.npid = npid;
+    page->header.bpid = PAGEIDNULL;
     page->header.width = 8;
     page->header.page_type = type;
     page->header.records = 0;
@@ -173,60 +175,6 @@ SKIPBLEAFSEARCH:
     return BLL_INSERT_ACCEPT;
 }
 
-char blink_entry_remove_from_pivot(b_link_pivot_page_s *page, uint32_t key)
-{
-    int upper = page->header.records;
-    int lower = 0, index = 0, i;
-    if (!page->header.records || key < page->pairs[lower].key ||
-        key > page->pairs[upper - 1].key) return BLP_REMOVE_UNEXIST;
-
-    if (page->pairs[upper - 1].key == key)
-        page->pairs[upper - 1].key = page->pairs[upper].cpid = PAGEIDNULL;
-    else{
-        if (page->pairs[lower].key == key)
-            index = lower;
-        else{
-            while (1) {
-                index = (int)(upper + lower) / 2;
-                if (page->pairs[index].key == key) break;
-                if (key < page->pairs[index + 1].key && \
-                    key > page->pairs[index].key)
-                    return BLP_REMOVE_UNEXIST;
-                if (page->pairs[index].key > key)
-                    upper = index;
-                else
-                    lower = index;
-            }
-        }
-        for (i = index; i < page->header.records - 1; i ++)
-            page->pairs[i] = page->pairs[i + 1];
-        page->pairs[i].cpid = page->pairs[i + 1].cpid;
-        page->pairs[i + 1].cpid = PAGEIDNULL;
-    }
-    
-    page->header.records --;
-    return BLP_REMOVE_ACCEPT;
-}
-
-char blink_entry_remove_from_leaf(b_link_leaf_page_s *page, uint32_t key)
-{
-    uint32_t index, width = page->header.width;
-    char *start;
-    if (!blink_leaf_scan(page, key, &index)) return BLL_REMOVE_UNEXIST;
-
-    start = page->data;
-    for (int i = index; i < page->header.records - 1; i ++)
-        memcpy(start + i * width, start + (i + 1) * width, width);
-    page->header.records --;
-    memset(start + page->header.records * width, '\0', width);
-    return BLL_REMOVE_ACCEPT;
-}
-
-char blink_entry_update_pivot(b_link_pivot_page_s *page, uint32_t key, uint32_t cpid)
-{
-    return BLP_UPDATE_ACCEPT;
-}
-
 char blink_entry_update_leaf(b_link_leaf_page_s *page, uint32_t key, char *data)
 {
     uint32_t index, width = page->header.width;
@@ -242,7 +190,8 @@ bool blink_is_node_safe(void *page, uint16_t page_type)
         return ((pivot->header.records + 1) >= PAIRENTRYS) ? false : true;
     }else{
         b_link_leaf_page_s *leaf = (b_link_leaf_page_s*)page;
-        return (((leaf->header.records + 1) * leaf->header.width + BLINKHEADERSIZE) >= PAGESIZE) ? false : true;
+        return \
+        (((leaf->header.records + 1) * leaf->header.width + BLINKHEADERSIZE) >= PAGESIZE) ? false : true;
     }
 }
 
@@ -269,6 +218,7 @@ uint32_t blink_leaf_split(void *A, void *B, char *entry, uint32_t key)
         blink_entry_insert_to_leaf(to, tmp);
     }
     from->header.npid = to->header.pid;
+    to->header.bpid = from->header.pid;
 
     for (int i = mid; i < from->header.records; i ++)
         memset(GET_DATA_FROM_LEAF(from->data, i, width), '\0', width);
@@ -292,6 +242,7 @@ uint32_t blink_pivot_split(void *A, void *B, uint32_t key, uint32_t cpid)
     for (int i = mid + 1; i < from->header.records; i ++)
         blink_entry_insert_to_pivot(to, from->pairs[i].key, from->pairs[i + 1].cpid);
     from->header.npid = to->header.pid;
+    to->header.bpid = from->header.pid;
 
     for (int i = mid; i < from->header.records; i ++)
         from->pairs[i].key = from->pairs[i].cpid = PAGEIDNULL;
@@ -304,4 +255,64 @@ uint32_t blink_pivot_split(void *A, void *B, uint32_t key, uint32_t cpid)
     from->pairs[PAIRENTRYS-1].key = A_max; // Pivot node upper bound store in last entry (Reserve).
     blink_entry_insert_to_pivot((key > A_max) ? to : from, key, cpid);
     return A_max;
+}
+
+char blink_entry_remove_from_pivot(b_link_pivot_page_s *page, uint32_t key, char *state)
+{
+    int upper = page->header.records ;
+    int lower = 0, index = 0, i;
+    if (!page->header.records || key < page->pairs[lower].key ||
+        key > page->pairs[upper - 1].key) return BLP_REMOVE_UNEXIST;
+
+    if (page->pairs[upper - 1].key == key) {
+        // Check the record is it the last entry of pivot node.
+        *state = (page->pairs[upper - 1].key == key) ? BLINK_DEL_LAST_BIT : 0;
+        page->pairs[upper - 1].key = page->pairs[upper].cpid = PAGEIDNULL;
+    }else{
+        if (page->pairs[lower].key == key)
+            index = lower;
+        else{
+            while (1) {
+                index = (int)(upper + lower) / 2;
+                if (page->pairs[index].key == key) break;
+                if (key < page->pairs[index + 1].key && \
+                    key > page->pairs[index].key)
+                    return BLP_REMOVE_UNEXIST;
+                if (page->pairs[index].key > key)
+                    upper = index;
+                else
+                    lower = index;
+            }
+        }
+        for (i = index; i < page->header.records - 1; i ++)
+            page->pairs[i] = page->pairs[i + 1];
+        page->pairs[i].cpid = page->pairs[i + 1].cpid;
+        page->pairs[i + 1].cpid = PAGEIDNULL;
+    }
+    page->header.records --;
+
+    // Check the pivot node is need merge, after delete a record.
+    *state |= IS_PIVOT_RECORD_ENOUGH(page->header.records);
+    return BLP_REMOVE_ACCEPT;
+}
+
+char blink_entry_remove_from_leaf(b_link_leaf_page_s *page, uint32_t key, char *state)
+{
+    uint32_t index, width = page->header.width;
+    char *start;
+    if (!blink_leaf_scan(page, key, &index)) return BLL_REMOVE_UNEXIST;
+
+    // Check the record is it the last entry of leaf node.
+    *state = (GET_ENTRY_KEY(page->data + (index * page->header.width)) == key) ? \
+                BLINK_DEL_LAST_BIT : 0;
+
+    start = page->data;
+    for (int i = index; i < page->header.records - 1; i ++)
+        memcpy(start + i * width, start + (i + 1) * width, width);
+    page->header.records --;
+    memset(start + page->header.records * width, '\0', width);
+
+    // Check the leaf node is need merge, after delete a record.
+    *state |= IS_LEAF_RECORD_ENOUGH(page->header.records, page->header.width);
+    return BLL_REMOVE_ACCEPT;
 }

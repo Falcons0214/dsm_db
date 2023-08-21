@@ -28,6 +28,10 @@ typedef struct b_link_pair b_link_pair_s;
 #define BLINK_IS_PIVOT(x) ((x)& PIVOT_PAGE)
 #define BLINK_IS_ROOT(x) ((x) & ROOT_PAGE)
 
+#define IS_LEAF_RECORD_ENOUGH(n, w) ((n) <= (((uint32_t)((PAGESIZE - BLINKHEADERSIZE - sizeof(uint32_t))) / (w)) / 2)) \
+                                    ? BLINK_DEL_MERGE_BIT : 0
+#define IS_PIVOT_RECORD_ENOUGH(n) ((n) <= ((uint32_t)(PAIRENTRYS / 2) - 1)) ? BLINK_DEL_MERGE_BIT : 0
+
 /*
  * b_link_pivot_node insert return value
  */
@@ -74,6 +78,7 @@ struct b_link_page_header
 {
     uint32_t pid;
     uint32_t ppid;
+    uint32_t bpid;
     uint32_t npid;
     uint16_t page_type;
     uint16_t records;
@@ -106,16 +111,21 @@ uint32_t blink_pivot_scan(b_link_pivot_page_s*, uint32_t);
 char* blink_leaf_scan(b_link_leaf_page_s*, uint32_t, uint32_t*);
 char blink_entry_insert_to_pivot(b_link_pivot_page_s*, uint32_t, uint32_t);
 char blink_entry_insert_to_leaf(b_link_leaf_page_s*, char*);
-char blink_entry_remove_from_pivot(b_link_pivot_page_s*, uint32_t);
-char blink_entry_remove_from_leaf(b_link_leaf_page_s*, uint32_t);
-char blink_entry_update_pivot(b_link_pivot_page_s*, uint32_t, uint32_t);
 char blink_entry_update_leaf(b_link_leaf_page_s*, uint32_t, char*);
+char blink_entry_update_pivot(b_link_pivot_page_s*, uint32_t);
 bool blink_head_init(b_link_leaf_page_s*, uint32_t, uint16_t, uint16_t);
-
 bool blink_is_node_safe(void*, uint16_t);
 void blink_pivot_set(b_link_pivot_page_s*, int, uint32_t, uint32_t);
 
 uint32_t blink_leaf_split(void*, void*, char*, uint32_t);
 uint32_t blink_pivot_split(void*, void*, uint32_t, uint32_t);
+
+// Use to check node need merge or replace.
+#define BLINK_DEL_MERGE_BIT 0x01
+#define BLINK_DEL_LAST_BIT 0x02
+#define __REM(x) ((x) & BLINK_DEL_MERGE_BIT)
+#define __REP(x) ((x) & BLINK_DEL_LAST_BIT)
+char blink_entry_remove_from_pivot(b_link_pivot_page_s*, uint32_t, char*);
+char blink_entry_remove_from_leaf(b_link_leaf_page_s*, uint32_t, char*);
 
 #endif /* B_PAGE_H */

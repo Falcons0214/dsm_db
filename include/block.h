@@ -1,25 +1,22 @@
  #ifndef BLOCK_H
 #define BLOCK_H
 
-#include "./page.h"
-// #include "../src/latch/rwlock.h"
 #include <pthread.h>
 #include <stdatomic.h>
 #include <stdint.h>
+#include "./page.h"
 
 typedef struct block block_s;
 
 struct block
 {
     block_s *next_empty;
-
     atomic_int reference_count;
-    
-    char state;
-    // rwlock_s rwlock;
     pthread_rwlock_t rwlock;
     uint32_t flags;
     uint8_t priority;
+    char state;
+    void *tmp;
     page_s *page;
 };
 

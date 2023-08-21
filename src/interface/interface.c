@@ -17,6 +17,9 @@
 
 #define FROMATTRGETPID(c) *((int*)&c[ATTRSIZE])
 
+#define GET_PID_FROM_BLOCK(x) (((x)->page)->page_id)
+#define GET_PAGE_RECORDS(x) (((x)->page)->record_num)
+
 bool insert_table_in_pdir(pool_mg_s *pm, disk_mg_s *dm, char *name, uint32_t page_id)
 {
     char buf[PAGEDIRENTRYSIZE];
@@ -617,18 +620,20 @@ char* db_1_tschema(pool_mg_s *pm, disk_mg_s *dm, char *tname)
 #define TO_BLINK_PIVOT(x) ((b_link_pivot_page_s*)((x)->page))
 
 #define GET_BLINK_NPID(x) ((TO_BLINK_LEAF(x)->header).npid)
+#define GET_BLINK_BPID(x) ((TO_BLINK_LEAF(x)->header).bpid)
 #define GET_BLINK_PAR(x) ((TO_BLINK_LEAF(x)->header).ppid)
 #define GET_BLINK_PID(x) ((TO_BLINK_LEAF(x)->header).pid)
 #define GET_BLINK_PAGETYPE(x) ((TO_BLINK_LEAF(x)->header).page_type)
 #define GET_BLINK_WIDTH(x) ((TO_BLINK_LEAF(x)->header).width)
+#define GET_BLINK_RECORDS(x) ((TO_BLINK_LEAF(x)->header).records)
 
 #define GET_PIVOT_UPBOUND(x) ((x)->pairs[PIVOTUPBOUNDINDEX].key)
 #define GET_LEAF_UPBOUND(x) ((x)->_upbound)
 
 #define SET_BLINK_PAR(node, id) ((TO_BLINK_PIVOT(node)->header).ppid = id)
 
-// #define IS_ROOT(x) (GET_BLINK_PAGETYPE(x) & ROOT_PAGE)
 #define IS_LEAF(x) (GET_BLINK_PAGETYPE(x) & LEAF_PAGE)
+// #define IS_ROOT(x) (GET_BLINK_PAGETYPE(x) & ROOT_PAGE)
 // #define IS_PIVOT(x) (GET_BLINK_PAGETYPE(x) & PIVOT_PAGE) 
 
 static char* __get_title(int x)
@@ -724,9 +729,8 @@ BLINKMOVERIGHTAGAIN:
             mp_release_page_wlock(cur);    
             return NULL;
         }
-        // printf("B %d, %d\n", key, GET_BLINK_PID(next));
-        mp_require_page_wlock(next);
         mp_release_page_wlock(cur);
+        mp_require_page_wlock(next);
         cur = next;
         goto BLINKMOVERIGHTAGAIN;
     }
@@ -742,8 +746,7 @@ BLINKMOVERIGHTAGAIN:
 bool db_1_iinsert(pool_mg_s *pm, disk_mg_s *dm, char *tname, char *entry, uint32_t key)
 {
     block_s *blink_table, *cur, *old, *sibling;
-    char *tmp, is_root = 0, rev;
-    char buf1[RTABLEENYRTSIZE], buf2[RTABLEENYRTSIZE];
+    char *tmp, is_root = 0, rev, buf1[RTABLEENYRTSIZE];
     uint32_t page_id, tmp_key, tmp_cpid;
     uint16_t node_type;
     int _stack[BLINKSTACKSIZE], stack_index = 0;
@@ -789,7 +792,7 @@ bool db_1_iinsert(pool_mg_s *pm, disk_mg_s *dm, char *tname, char *entry, uint32
     }
 
     tmp_key = tmp_cpid = PAGEIDNULL;
-BLINK_INSERTIONAGAIN:
+BLINK_INSERT_TO_PREV_LEVEL:
     node_type = GET_BLINK_PAGETYPE(cur);
     if (blink_is_node_safe((void*)cur->page, node_type)) {
         /*
@@ -799,16 +802,9 @@ BLINK_INSERTIONAGAIN:
             memset(buf1, '\0', RTABLEENYRTSIZE);
             memcpy(buf1, tname, strlen(tname));
             memcpy(&buf1[ATTRSIZE], &GET_BLINK_PID(cur), sizeof(uint32_t));
-
-            tmp = p_entry_read_by_index(blink_table->page, B_LINK_RECORDNUM);
-            tmp_key = FROMATTRGETPID(tmp) + 1;
-            memset(buf2, '\0', RTABLEENYRTSIZE);
-            memcpy(buf2, B2, strlen(B2));
-            memcpy(&buf2[ATTRSIZE], &tmp_key, sizeof(uint32_t));
             
             mp_require_page_wlock(blink_table);
             p_entry_update_by_index(blink_table->page, buf1, B_LINK_PID);
-            p_entry_update_by_index(blink_table->page, buf2, B_LINK_RECORDNUM);
             mp_release_page_wlock(blink_table);
             DIRTYSET(&blink_table->flags);
         }else{
@@ -845,6 +841,13 @@ BLINK_INSERTIONAGAIN:
             blink_pivot_set(TO_BLINK_PIVOT(cur), tmp_key, GET_BLINK_PID(old), GET_BLINK_PID(sibling));
             DIRTYSET(&cur->flags);
         }else{
+            /*
+             * When the previous insert operation let tree need
+             * update it root page id, but for other operations
+             * if they coming before update, this will let the
+             * stack break, so we need check stack index is it
+             * correct for this situation,
+             */
             if (stack_index == 0)
                 page_id = GET_BLINK_PAR(old);
             else{
@@ -859,9 +862,17 @@ BLINK_INSERTIONAGAIN:
         }
         mp_release_page_wlock(old);
         SET_BLINK_PAR(sibling, GET_BLINK_PID(cur));
-        goto BLINK_INSERTIONAGAIN;
+        goto BLINK_INSERT_TO_PREV_LEVEL;
     }
 
+    mp_require_page_wlock(blink_table);
+    tmp = p_entry_read_by_index(blink_table->page, B_LINK_RECORDNUM);
+    tmp_key = FROMATTRGETPID(tmp) + 1;
+    memset(buf1, '\0', RTABLEENYRTSIZE);
+    memcpy(buf1, B2, strlen(B2));
+    memcpy(&buf1[ATTRSIZE], &tmp_key, sizeof(uint32_t));
+    p_entry_update_by_index(blink_table->page, buf1, B_LINK_RECORDNUM);
+    mp_release_page_wlock(blink_table);
     return true; // Success
 }
 
@@ -892,7 +903,7 @@ char* db_1_isearch(pool_mg_s *pm, disk_mg_s *dm, char *tname, int key)
         cur = mp_page_open(pm, dm, page_id);
     }
 
-    while (true) {
+    while (1) {
         upbound = GET_LEAF_UPBOUND(TO_BLINK_LEAF(cur));
         if (upbound != PAGEIDNULL && key > upbound) {
             cur = mp_page_open(pm, dm, GET_BLINK_NPID(cur));
@@ -905,24 +916,171 @@ char* db_1_isearch(pool_mg_s *pm, disk_mg_s *dm, char *tname, int key)
 
     tmp = blink_leaf_scan(TO_BLINK_LEAF(cur), key, NULL);
     return tmp;
-}
+} 
 
-void db_1_iremove(pool_mg_s *pm, disk_mg_s *dm, char *tname, int pkey)
+#define IS_LAST_ENTRY(state) ((state) & BLINK_DEL_LAST_BIT)
+#define NEED_MERGE(state) ((state) & BLINK_DEL_MERGE_BIT)
+#define GET_MAX_KEY_FROM_LEAF(l) *((uint32_t*)(((l)->data) + ((l)->header.records - 1) * ((l)->header.width)))
+
+void db_1_iremove(pool_mg_s *pm, disk_mg_s *dm, char *tname, int key)
 {
+    block_s *blink_table, *cur, *prev;
+    uint32_t page_id, replace, replaced;
+    char *tmp, stateA, stateB;
+    int _stack[BLINKSTACKSIZE], stack_index = 0;
+
+    // It should lock tree root from here ...
+    blink_table = db_1_topen(pm, dm, tname);
+    if (!blink_table) {
+        // err handler, index open failed.
+    }
+
+    tmp = p_entry_read_by_index(blink_table->page, B_LINK_PID);
+    cur = mp_page_open(pm, dm, FROMATTRGETPID(tmp));
+
+    while (!IS_LEAF(cur)) {
+        _stack[stack_index++] = GET_BLINK_PID(cur);
+        page_id = blink_pivot_scan(TO_BLINK_PIVOT(cur), key);
+        if (page_id == PAGEIDNULL) {
+            return;
+        }
+        cur = mp_page_open(pm, dm, page_id);
+    }
     
+    stateA = stateB = 0;
+    if (blink_entry_remove_from_leaf(TO_BLINK_LEAF(cur), key, &stateA) == BLL_REMOVE_UNEXIST)
+        return;
+    else{
+        if (stateA) {
+            if (IS_LAST_ENTRY(stateA)) {
+                replace = GET_MAX_KEY_FROM_LEAF(TO_BLINK_LEAF(cur));
+                replaced = key;
+                stateB |= BLINK_DEL_LAST_BIT;
+            }
+            if (NEED_MERGE(stateA)) {
+                prev = mp_page_open(pm, dm, GET_BLINK_BPID(cur));
+                if (!prev) {
+                    // error handler.
+                }
+                
+                if (IS_LEAF_RECORD_ENOUGH(GET_BLINK_RECORDS(prev) - 1, GET_BLINK_WIDTH(prev))) {
+
+                }else{
+
+                }
+                stateB |= BLINK_DEL_MERGE_BIT;
+            }
+        }else
+            goto BLINK_SKIP_PIVOT;
+    }
+
+BLINK_TO_PREV_LEVEL:
+    if (__REM(stateB))
+        blink_entry_remove_from_pivot(TO_BLINK_PIVOT(cur), key, &stateA);
+    if (__REP(stateB))
+        // do replace.
+    DIRTYSET(&cur->flags);
+    if (stateA) {
+        if (NEED_MERGE(stateA)) {
+
+
+            // If have entry can borrow, this operation can skip.
+            stateB |= BLINK_DEL_MERGE_BIT;
+        }
+        if (IS_LAST_ENTRY(stateA)) {
+            
+            stateB |= BLINK_DEL_LAST_BIT;
+        }
+
+        if (GET_BLINK_PAR(cur) != _stack[--stack_index])
+            SET_BLINK_PAR(cur, _stack[stack_index]);
+        cur = mp_page_open(pm, dm, _stack[stack_index]);
+        goto BLINK_TO_PREV_LEVEL;
+    }
+
+BLINK_SKIP_PIVOT:
+    return;
 }
 
 void db_1_idelete(pool_mg_s *pm, disk_mg_s *dm, char *tname)
 {
+    block_s *blink_table, *cur;
+    uint32_t blink_tid, leftest_pid, next;
+    uint16_t type;
+    char *tmp, buf[RTABLEENYRTSIZE], brk;
+    
+    if (!remove_table_from_pdir(pm, dm, tname, &blink_tid)) {
 
+    }
+
+    blink_table = mp_page_open(pm, dm, blink_tid);
+    tmp = p_entry_read_by_index(blink_table->page, B_LINK_PID);
+    cur = mp_page_open(pm, dm, FROMATTRGETPID(tmp));
+    if (!cur) {
+        // err handler, index root open failed.
+    }
+    type = GET_BLINK_PAGETYPE(cur);
+
+    if (BLINK_IS_LEAF(type))
+        mp_page_mdelete(pm, dm, cur);
+    else{
+        // Use to move to next level of tree.
+        brk = 0;
+        while (1) {
+            type = GET_BLINK_PAGETYPE(cur);
+            if (BLINK_IS_LEAF(type))
+                brk = 1;
+            else
+                leftest_pid = TO_BLINK_PIVOT(cur)->pairs[0].cpid;
+
+            // Use to delete level of tree.
+            while (1) {
+                next = GET_BLINK_NPID(cur);
+                mp_page_mdelete(pm, dm, cur);
+                if (next == PAGEIDNULL)
+                    break;
+                else{
+                    cur = mp_page_open(pm, dm, next);
+                    if (!cur) {}
+                }
+            };
+
+            if (brk)
+                break;
+            else{
+                cur = mp_page_open(pm, dm, leftest_pid);
+                if (!cur) {}
+            }
+        };
+    }
+
+    mp_page_mdelete(pm, dm, blink_table);
+    return;
+}
+
+char* db_1_ischema(pool_mg_s *pm, disk_mg_s *dm, int fd, char *tname)
+{
+    block_s *blink_table;
+    char *tmp, *chunk = (char*)malloc(sizeof(char) * CHUNKSIZE);
+    if (!chunk) {
+        return NULL;
+    }
+
+    blink_table = db_1_topen(pm, dm, tname);
+    if (!blink_table) {
+        // err handler, index open failed.
+        return NULL;
+    }
+
+    memset(chunk, 0, CHUNKSIZE);
+    for (int i = B_LINK_INFOSIZE; i < GET_PAGE_RECORDS(blink_table); i++) {
+        tmp = p_entry_read_by_index(blink_table->page, i);
+        sprintf(&chunk[strlen(chunk)], "%s,", tmp);
+    }
+    return chunk;
 }
 
 void db_1_iread(pool_mg_s *pm, disk_mg_s *dm, int fd, char *tname, char **attrs, int limit)
-{
-
-}
-
-void db_1_ischema(pool_mg_s *pm, disk_mg_s *dm, int fd, char *tname)
 {
 
 }
