@@ -43,7 +43,7 @@
 #define B2 "RECORD_NUM"
 #define BR "RESERVE"
 
-#define BLINKSTACKSIZE 256
+#define BLINKSTACKSIZE 64
 
 struct db_s
 {

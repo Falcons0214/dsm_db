@@ -1,4 +1,3 @@
-#include "../latch/rwlock.h"
 #include "../../include/pool.h"
 #include "../error/error.h"
 #include "../../include/db.h"
@@ -292,15 +291,12 @@ pool_mg_s* mp_pool_open(bool init, disk_mg_s *dm)
             pthread_mutex_init(&(temp->sp_block_mutex), NULL);
             cur_sub_pool ++;
         }
-        if (i % SUBPOOLBLOCKS == SUBPOOLBLOCKS - 1)
-            tmp_b->next_empty = NULL;
-        else
-            tmp_b->next_empty = (tmp_b + 1);
+        tmp_b->next_empty = (i % SUBPOOLBLOCKS == SUBPOOLBLOCKS - 1) ? NULL : (tmp_b + 1);
         tmp_b->page = tmp_p;
         tmp_b->state = PAGENOTINPOOL; 
         tmp_b->priority = 0;
         tmp_b->flags = 0; 
-        tmp_b->reference_count = ATOMIC_VAR_INIT(0);
+        atomic_init(&tmp_b->reference_count, 0);
         pthread_rwlock_init(&tmp_b->rwlock, NULL);
         // rwlock_init(&(tmp_b->rwlock));
     }

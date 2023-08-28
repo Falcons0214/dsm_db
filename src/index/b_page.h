@@ -1,6 +1,7 @@
 #ifndef B_PAGE_H
 #define B_PAGE_H
 
+#include <stdbool.h>
 #include <stdint.h>
 #include "../../include/page.h"
 
@@ -28,9 +29,9 @@ typedef struct b_link_pair b_link_pair_s;
 #define BLINK_IS_PIVOT(x) ((x)& PIVOT_PAGE)
 #define BLINK_IS_ROOT(x) ((x) & ROOT_PAGE)
 
-#define IS_LEAF_RECORD_ENOUGH(n, w) ((n) <= (((uint32_t)((PAGESIZE - BLINKHEADERSIZE - sizeof(uint32_t))) / (w)) / 2)) \
+#define IS_LEAF_RECORD_ENOUGH(n, w) ((n) > (((uint32_t)((PAGESIZE - BLINKHEADERSIZE - sizeof(uint32_t))) / (w)) / 2)) \
                                     ? BLINK_DEL_MERGE_BIT : 0
-#define IS_PIVOT_RECORD_ENOUGH(n) ((n) <= ((uint32_t)(PAIRENTRYS / 2) - 1)) ? BLINK_DEL_MERGE_BIT : 0
+#define IS_PIVOT_RECORD_ENOUGH(n) ((n) > ((uint32_t)(PAIRENTRYS / 2) - 1)) ? BLINK_DEL_MERGE_BIT : 0
 
 /*
  * b_link_pivot_node insert return value
@@ -112,7 +113,7 @@ char* blink_leaf_scan(b_link_leaf_page_s*, uint32_t, uint32_t*);
 char blink_entry_insert_to_pivot(b_link_pivot_page_s*, uint32_t, uint32_t);
 char blink_entry_insert_to_leaf(b_link_leaf_page_s*, char*);
 char blink_entry_update_leaf(b_link_leaf_page_s*, uint32_t, char*);
-char blink_entry_update_pivot(b_link_pivot_page_s*, uint32_t);
+bool blink_entry_update_pivot_key(b_link_pivot_page_s*, uint32_t, uint32_t);
 bool blink_head_init(b_link_leaf_page_s*, uint32_t, uint16_t, uint16_t);
 bool blink_is_node_safe(void*, uint16_t);
 void blink_pivot_set(b_link_pivot_page_s*, int, uint32_t, uint32_t);
@@ -123,9 +124,15 @@ uint32_t blink_pivot_split(void*, void*, uint32_t, uint32_t);
 // Use to check node need merge or replace.
 #define BLINK_DEL_MERGE_BIT 0x01
 #define BLINK_DEL_LAST_BIT 0x02
+#define BLINK_DEL_SIBLING_BIT 0x04
+#define BLINK_DEL_FROM_DIFPAR 0x08
 #define __REM(x) ((x) & BLINK_DEL_MERGE_BIT)
 #define __REP(x) ((x) & BLINK_DEL_LAST_BIT)
+#define __SIB(x) ((x) & BLINK_DEL_SIBLING_BIT)
+#define __ISDIFPAR(x) ((x) & BLINK_DEL_FROM_DIFPAR)
 char blink_entry_remove_from_pivot(b_link_pivot_page_s*, uint32_t, char*);
 char blink_entry_remove_from_leaf(b_link_leaf_page_s*, uint32_t, char*);
+void blink_merge_leaf(b_link_leaf_page_s*, b_link_leaf_page_s*);
+void blink_merge_pivot(b_link_pivot_page_s*, b_link_pivot_page_s*, uint32_t);
 
 #endif /* B_PAGE_H */
