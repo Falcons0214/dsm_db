@@ -1,8 +1,3 @@
-#include "../../include/pool.h"
-#include "../error/error.h"
-#include "../../include/db.h"
-#include "../index/b_page.h"
-
 #include <malloc.h>
 #include <pthread.h>
 #include <stdatomic.h>
@@ -10,6 +5,11 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
+
+#include "../../include/pool.h"
+#include "../error/error.h"
+#include "../../include/db.h"
+#include "../index/b_page.h"
 
 #define FILELOCATION "pool.c"
 

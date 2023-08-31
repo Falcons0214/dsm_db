@@ -50,6 +50,7 @@ typedef struct b_link_pair b_link_pair_s;
  */
 #define BLP_REMOVE_UNEXIST 0
 #define BLP_REMOVE_ACCEPT 1
+#define BLP_REMOVE_LEFTEST 2
 
 /*
  * b_link_leaf_node remove return value
@@ -125,11 +126,11 @@ uint32_t blink_pivot_split(void*, void*, uint32_t, uint32_t);
 #define BLINK_DEL_MERGE_BIT 0x01
 #define BLINK_DEL_LAST_BIT 0x02
 #define BLINK_DEL_SIBLING_BIT 0x04
-#define BLINK_DEL_FROM_DIFPAR 0x08
+
 #define __REM(x) ((x) & BLINK_DEL_MERGE_BIT)
 #define __REP(x) ((x) & BLINK_DEL_LAST_BIT)
 #define __SIB(x) ((x) & BLINK_DEL_SIBLING_BIT)
-#define __ISDIFPAR(x) ((x) & BLINK_DEL_FROM_DIFPAR)
+
 char blink_entry_remove_from_pivot(b_link_pivot_page_s*, uint32_t, char*);
 char blink_entry_remove_from_leaf(b_link_leaf_page_s*, uint32_t, char*);
 void blink_merge_leaf(b_link_leaf_page_s*, b_link_leaf_page_s*);

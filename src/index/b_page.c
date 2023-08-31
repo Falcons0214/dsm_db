@@ -239,7 +239,7 @@ uint32_t blink_pivot_split(void *A, void *B, uint32_t key, uint32_t cpid)
 {
     b_link_pivot_page_s *from = (b_link_pivot_page_s*)A;
     b_link_pivot_page_s *to = (b_link_pivot_page_s*)B;
-    int mid = (int)from->header.records / 2 + 1, width = from->header.width;
+    int mid = (int)from->header.records / 2 + 1;
     uint32_t A_max;
     
     blink_pivot_set(to, from->pairs[mid].key, from->pairs[mid].cpid, \
@@ -274,7 +274,7 @@ char blink_entry_remove_from_pivot(b_link_pivot_page_s *page, uint32_t key, char
                 page->pairs[i] = page->pairs[i + 1];
         page->pairs[i].cpid = page->pairs[i + 1].cpid;
         page->pairs[i + 1].cpid = page->pairs[i].key = PAGEIDNULL;
-        *state |= BLINK_DEL_FROM_DIFPAR;
+        index = -1;
     }else{
         if (page->pairs[upper - 1].key == key) {
             // *state = (page->pairs[upper - 1].key == key) ? BLINK_DEL_LAST_BIT : 0;
@@ -303,10 +303,9 @@ char blink_entry_remove_from_pivot(b_link_pivot_page_s *page, uint32_t key, char
         }
     }
     page->header.records --;
-
-    // Check the pivot node is need merge, after delete a record.
     *state |= IS_PIVOT_RECORD_ENOUGH(page->header.records);
-    return BLP_REMOVE_ACCEPT;
+
+    return (index != -1) ? BLP_REMOVE_ACCEPT : BLP_REMOVE_LEFTEST;
 }
 
 char blink_entry_remove_from_leaf(b_link_leaf_page_s *page, uint32_t key, char *state)
@@ -334,10 +333,10 @@ void blink_merge_leaf(b_link_leaf_page_s *from, b_link_leaf_page_s *to)
 {
     for (int i = 0; i < from->header.records; i ++)
         blink_entry_insert_to_leaf(to, (from->data + (from->header.width * i)));
-    to->_upbound = *((uint32_t*)(to->data + ((to->header.records - 1) * to->header.width)));
+    to->_upbound = from->_upbound;
 }
  
 void blink_merge_pivot(b_link_pivot_page_s *from, b_link_pivot_page_s *to, uint32_t key)
 {
-    
+    // move entry from `from` to `to` and update upper bound.
 }
