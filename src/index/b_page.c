@@ -304,7 +304,8 @@ char blink_entry_remove_from_pivot(b_link_pivot_page_s *page, uint32_t key, char
     }
     page->header.records --;
     *state |= IS_PIVOT_RECORD_ENOUGH(page->header.records);
-
+    if (BLINK_IS_ROOT(page->header.page_type))
+        *state = 0;
     return (index != -1) ? BLP_REMOVE_ACCEPT : BLP_REMOVE_LEFTEST;
 }
 
@@ -326,6 +327,8 @@ char blink_entry_remove_from_leaf(b_link_leaf_page_s *page, uint32_t key, char *
 
     // Check the leaf node is need merge, after delete a record.
     *state |= IS_LEAF_RECORD_ENOUGH(page->header.records, page->header.width);
+    if (BLINK_IS_ROOT(page->header.page_type))
+        *state = 0;
     return BLL_REMOVE_ACCEPT;
 }
 

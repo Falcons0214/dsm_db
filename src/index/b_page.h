@@ -18,7 +18,8 @@ typedef struct b_link_pair b_link_pair_s;
 
 #define BLINK_ENTRY_LIMIT PAGESIZE - BLINKHEADERSIZE
 #define BLINK_LEAF_DATA_SIZE (PAGESIZE - BLINKHEADERSIZE - sizeof(uint32_t))
-#define BLINK_PIVOT_PADDING_SIZE (PAGESIZE - (PAIRENTRYS * BLINKPAIRSIZE + BLINKHEADERSIZE))
+#define BLINK_PIVOT_PADDING_SIZE \
+        (PAGESIZE - (PAIRENTRYS * BLINKPAIRSIZE + BLINKHEADERSIZE))
 
 #define INVALID_PAGE 0x00
 #define LEAF_PAGE 0x01
@@ -26,12 +27,15 @@ typedef struct b_link_pair b_link_pair_s;
 #define ROOT_PAGE 0x04
 
 #define BLINK_IS_LEAF(x) ((x) & LEAF_PAGE)
-#define BLINK_IS_PIVOT(x) ((x)& PIVOT_PAGE)
+#define BLINK_IS_PIVOT(x) ((x) & PIVOT_PAGE)
 #define BLINK_IS_ROOT(x) ((x) & ROOT_PAGE)
 
-#define IS_LEAF_RECORD_ENOUGH(n, w) ((n) > (((uint32_t)((PAGESIZE - BLINKHEADERSIZE - sizeof(uint32_t))) / (w)) / 2)) \
-                                    ? BLINK_DEL_MERGE_BIT : 0
-#define IS_PIVOT_RECORD_ENOUGH(n) ((n) > ((uint32_t)(PAIRENTRYS / 2) - 1)) ? BLINK_DEL_MERGE_BIT : 0
+#define IS_LEAF_RECORD_ENOUGH(n, w) ((n) > \
+        (((uint32_t)((PAGESIZE - BLINKHEADERSIZE - sizeof(uint32_t))) / (w)) / 2)) \
+        ? BLINK_DEL_MERGE_BIT : 0
+
+#define IS_PIVOT_RECORD_ENOUGH(n) \
+        ((n) > ((uint32_t)(PAIRENTRYS / 2) - 1)) ? BLINK_DEL_MERGE_BIT : 0
 
 /*
  * b_link_pivot_node insert return value

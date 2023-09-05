@@ -930,7 +930,7 @@ void db_1_iremove(pool_mg_s *pm, disk_mg_s *dm, char *tname, int key)
 {
     block_s *blink_table, *cur, *A, *B;
     uint32_t page_id, replace, replaced, b_replace, b_replaced, remove_key, remove_max;
-    char *tmp, stateA, stateB, diff;
+    char *tmp, stateA, stateB, diff, re, buf[RTABLEENYRTSIZE];
     int _stack[BLINKSTACKSIZE], stack_index = 0;
 
     // It should lock tree root from here ...
@@ -959,7 +959,7 @@ void db_1_iremove(pool_mg_s *pm, disk_mg_s *dm, char *tname, int key)
         if (stateA) {
             if (__REM(stateA)) {
                 A = mp_page_open(pm, dm, (GET_BLINK_BPID(cur) != PAGEIDNULL) ? \
-                                      GET_BLINK_BPID(cur) : GET_BLINK_NPID(cur));
+                                          GET_BLINK_BPID(cur) : GET_BLINK_NPID(cur));
                 if (!A) {
                     // error handler.
                 }
@@ -974,12 +974,10 @@ void db_1_iremove(pool_mg_s *pm, disk_mg_s *dm, char *tname, int key)
                         b_replaced = (GET_LEAF_UPBOUND(cur) == key) ? \
                                      key : GET_MAX_KEY_FROM_LEAF(TO_BLINK_LEAF(cur));
                         b_replace = GET_MIN_KEY_FROM_LEAF(TO_BLINK_LEAF(A));
-                        tmp = blink_leaf_scan(TO_BLINK_LEAF(A), b_replace, NULL);
-                        blink_entry_insert_to_leaf(TO_BLINK_LEAF(cur), tmp);
+                        blink_entry_insert_to_leaf(TO_BLINK_LEAF(cur), blink_leaf_scan(TO_BLINK_LEAF(A), b_replace, NULL));
                         blink_entry_remove_from_leaf(TO_BLINK_LEAF(A), b_replace, NULL);
                         SET_LEAF_UPBOUND(cur, b_replace);
-                        if (key == b_replaced)
-                            stateA &= ~BLINK_DEL_LAST_BIT;
+                        stateA &= ~BLINK_DEL_LAST_BIT;
                     }else{
                         /*
                          * [Node A] -> [Node cur] 
@@ -987,8 +985,7 @@ void db_1_iremove(pool_mg_s *pm, disk_mg_s *dm, char *tname, int key)
                          * Borrow an entry from Left node (A).
                          */
                         b_replaced = GET_MAX_KEY_FROM_LEAF(TO_BLINK_LEAF(A));
-                        tmp = blink_leaf_scan(TO_BLINK_LEAF(A), b_replaced, NULL);
-                        blink_entry_insert_to_leaf(TO_BLINK_LEAF(cur), tmp);
+                        blink_entry_insert_to_leaf(TO_BLINK_LEAF(cur), blink_leaf_scan(TO_BLINK_LEAF(A), b_replaced, NULL));
                         blink_entry_remove_from_leaf(TO_BLINK_LEAF(A), b_replaced, NULL);
                         b_replace = GET_MAX_KEY_FROM_LEAF(TO_BLINK_LEAF(A));
                         SET_LEAF_UPBOUND(A, b_replace);
@@ -1017,7 +1014,6 @@ void db_1_iremove(pool_mg_s *pm, disk_mg_s *dm, char *tname, int key)
                          * will cover by the entry from "Node(B)", so we reset stateB, use 
                          * to skip it doing replace. 
                          */
-                        stateA &= ~BLINK_DEL_LAST_BIT;
                         remove_key = GET_LEAF_UPBOUND(cur);
                         blink_merge_leaf(TO_BLINK_LEAF(B), TO_BLINK_LEAF(cur));
                         SET_BLINK_NPID(cur, GET_BLINK_NPID(B));
@@ -1030,7 +1026,9 @@ void db_1_iremove(pool_mg_s *pm, disk_mg_s *dm, char *tname, int key)
                             DIRTYSET(&A->flags);
                         }
                         DIRTYSET(&cur->flags);
+                        page_id = GET_BLINK_PID(cur);
                         mp_page_ddelete(pm, dm, GET_BLINK_PID(B));
+                        stateA &= ~BLINK_DEL_LAST_BIT;
                     }else{
                         /*
                          * [Node A] <- [Node cur] - [Node B]
@@ -1044,6 +1042,7 @@ void db_1_iremove(pool_mg_s *pm, disk_mg_s *dm, char *tname, int key)
                             SET_BLINK_BPID(B, GET_BLINK_PID(A));
                             DIRTYSET(&B->flags);
                         }
+                        page_id = GET_BLINK_PID(A);
                         mp_page_ddelete(pm, dm, GET_BLINK_PID(cur));
                     }
                     stateB |= BLINK_DEL_MERGE_BIT;
@@ -1053,8 +1052,8 @@ void db_1_iremove(pool_mg_s *pm, disk_mg_s *dm, char *tname, int key)
                 replace = GET_MAX_KEY_FROM_LEAF(TO_BLINK_LEAF(cur));
                 replaced = key;
                 stateB |= BLINK_DEL_LAST_BIT;
-                DIRTYSET(&cur->flags);
                 SET_LEAF_UPBOUND(cur, replace);
+                DIRTYSET(&cur->flags);
             }
         }else
             goto BLINK_SKIP_PIVOT;
@@ -1062,10 +1061,6 @@ void db_1_iremove(pool_mg_s *pm, disk_mg_s *dm, char *tname, int key)
 
 BLINK_TO_PREV_LEVEL:
     stateA = 0;
-    if (!stack_index) {
-        goto BLINK_SKIP_PIVOT;
-    }
-
     if (GET_BLINK_PAR(cur) != _stack[--stack_index])
         SET_BLINK_PAR(cur, _stack[stack_index]);
     cur = mp_page_open(pm, dm, _stack[stack_index]);
@@ -1103,23 +1098,33 @@ BLINK_TO_PREV_LEVEL:
     }
 
     if (__REM(stateB)) {
+        re = blink_entry_remove_from_pivot(TO_BLINK_PIVOT(cur), remove_key, &stateA);
+
+        if (BLINK_IS_ROOT(GET_BLINK_PAGETYPE(cur)) && !GET_BLINK_RECORDS(cur)) {
+            memset(buf, 0, RTABLEENYRTSIZE);
+            memcpy(buf, tmp, ATTRSIZE);
+            memcpy(&buf[ATTRSIZE], &page_id, sizeof(uint32_t));
+            p_entry_update_by_index(blink_table->page, buf, B_LINK_PID);
+            mp_page_ddelete(pm, dm, GET_BLINK_PID(cur));
+            goto BLINK_SKIP_PIVOT;
+        }
+
         A = mp_page_open(pm, dm, (GET_BLINK_BPID(cur) != PAGEIDNULL) ? \
-                                  GET_BLINK_BPID(cur) : GET_BLINK_NPID(cur));
+                                GET_BLINK_BPID(cur) : GET_BLINK_NPID(cur));
         if (!A) {
             // error handler.
         }
 
-        if (blink_entry_remove_from_pivot(TO_BLINK_PIVOT(cur), remove_key, &stateA) == BLP_REMOVE_LEFTEST) {
+        if (re == BLP_REMOVE_LEFTEST)
             diff = 1;
-        }else{
+        else{
             remove_key = (GET_BLINK_BPID(cur) != PAGEIDNULL) ? GET_MAX_KEY_FROM_PIVOT(A) : GET_MAX_KEY_FROM_PIVOT(cur);
             remove_max = (GET_BLINK_BPID(cur) != PAGEIDNULL) ? GET_PIVOT_UPBOUND(A) : GET_PIVOT_UPBOUND(cur);
             diff = 0;
         }
 
         if (!__REM(stateA)) {
-            if (diff && !blink_entry_update_pivot_key(TO_BLINK_PIVOT(A), remove_max, remove_key))
-            {
+            if (diff && !blink_entry_update_pivot_key(TO_BLINK_PIVOT(A), remove_max, remove_key)) {
                 b_replace = remove_max;
                 b_replaced = remove_key;
                 stateB |= BLINK_DEL_SIBLING_BIT;
@@ -1156,9 +1161,8 @@ BLINK_TO_PREV_LEVEL:
                 if (GET_BLINK_BPID(cur) == PAGEIDNULL)
                     B = (GET_BLINK_NPID(A) == PAGEIDNULL) ? NULL : mp_page_open(pm, dm, GET_BLINK_NPID(A));
                 else
-                    B = (GET_BLINK_NPID(A) == PAGEIDNULL) ? NULL : mp_page_open(pm, dm, GET_BLINK_NPID(cur));
-                
-                
+                    B = (GET_BLINK_NPID(cur) == PAGEIDNULL) ? NULL : mp_page_open(pm, dm, GET_BLINK_NPID(cur));
+
                 if (GET_BLINK_BPID(cur) == PAGEIDNULL) {
                     /*
                      * [Node cur] <- [Node A] - [Node B]
@@ -1166,7 +1170,9 @@ BLINK_TO_PREV_LEVEL:
                     blink_merge_pivot(TO_BLINK_PIVOT(A), TO_BLINK_PIVOT(cur), remove_max);
                     remove_max = GET_PIVOT_UPBOUND(cur);
                     SET_BLINK_NPID(cur, GET_BLINK_NPID(A));
-                    if (B) SET_BLINK_BPID(B, GET_BLINK_PID(cur));
+                    if (B)
+                        SET_BLINK_BPID(B, GET_BLINK_PID(cur));
+                    page_id = GET_BLINK_PID(cur);
                     mp_page_ddelete(pm, dm, GET_BLINK_PID(A));
                 }else{
                     /*
@@ -1175,7 +1181,9 @@ BLINK_TO_PREV_LEVEL:
                     blink_merge_pivot(TO_BLINK_PIVOT(cur), TO_BLINK_PIVOT(A), remove_max);
                     remove_max = GET_PIVOT_UPBOUND(A);
                     SET_BLINK_NPID(A, GET_BLINK_NPID(cur));
-                    if (B) SET_BLINK_BPID(B, GET_BLINK_PID(A));
+                    if (B)
+                        SET_BLINK_BPID(B, GET_BLINK_PID(A));
+                    page_id = GET_BLINK_PID(A);
                     mp_page_ddelete(pm, dm, GET_BLINK_PID(cur));
                 }
                 DIRTYSET(&A->flags);
