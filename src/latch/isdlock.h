@@ -6,9 +6,6 @@
 
 typedef struct isdlock_s isdlock_s;
 
-#define ISD_INIT 0
-#define ISD_DELBIT 0x01
-
 /*
  * This lock let delete operation have hightest
  * priority, other operations (insert & search)
@@ -22,13 +19,13 @@ typedef struct isdlock_s isdlock_s;
  */
 struct isdlock_s
 {
-    atomic_uint count_is;
-    atomic_uint count_d;
-    volatile uint32_t flag;
+    atomic_char count_is;
+    atomic_char count_d;
+    atomic_char key;
+    volatile char flag;
 };
 
-isdlock_s* isd_create();
-
+void isd_init(isdlock_s*);
 void isd_is_require(isdlock_s*);
 void isd_is_release(isdlock_s*);
 void isd_d_require(isdlock_s*);

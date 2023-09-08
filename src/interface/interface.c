@@ -279,7 +279,7 @@ bool db_1_tdelete(pool_mg_s *pm, disk_mg_s *dm, char *tname)
          * so we can delete it directly.
          */
         if (i == 0)
-            mp_page_ddelete(pm, dm, attr_pid);
+            mp_page_ddelete(pm, dm, attr_pid, GENERAL);
         else{
             /*
              * Attribute table pages we need load in memory because they record
@@ -291,10 +291,10 @@ bool db_1_tdelete(pool_mg_s *pm, disk_mg_s *dm, char *tname)
                     tmp = p_entry_read_by_index(attr_block->page, h);
                     if (!tmp) continue;
                     memcpy(&data_pid, tmp, sizeof(uint32_t));
-                    mp_page_ddelete(pm, dm, data_pid);
+                    mp_page_ddelete(pm, dm, data_pid, GENERAL);
                     entry2 ++;
                 }
-                mp_page_ddelete(pm, dm, attr_block->page->page_id);
+                mp_page_ddelete(pm, dm, attr_block->page->page_id, GENERAL);
                 if (attr_block->page->next_page_id != PAGEIDNULL) {
                     attr_block = mp_page_open(pm, dm, attr_block->page->next_page_id);
                     if (attr_block) {
@@ -306,7 +306,7 @@ bool db_1_tdelete(pool_mg_s *pm, disk_mg_s *dm, char *tname)
         }
         entry ++;
     }
-    mp_page_ddelete(pm, dm, root_table->page->page_id);
+    mp_page_ddelete(pm, dm, root_table->page->page_id, GENERAL);
 
     djb2_pop(pm->hash_table, tname);
     return true;
@@ -463,7 +463,7 @@ char* __do_rep(pool_mg_s *pm, disk_mg_s *dm, block_s *attr_tblock)
     remain --;
 
     if (!remain)
-        mp_page_mdelete(pm, dm, data);
+        mp_page_mdelete(pm, dm, data, GENERAL);
     else{
         memcpy(buf, tmp, sizeof(int));
         memcpy(&buf[4], &remain, sizeof(uint16_t));
@@ -472,7 +472,7 @@ char* __do_rep(pool_mg_s *pm, disk_mg_s *dm, block_s *attr_tblock)
 
     if (!cur->page->record_num) {
         p_entry_set_nextpid(prev->page, PAGEIDNULL);
-        mp_page_mdelete(pm, dm, cur);
+        mp_page_mdelete(pm, dm, cur, GENERAL);
         DIRTYSET(&prev->flags);
     }else{
         if (!remain)
@@ -923,6 +923,7 @@ char* db_1_isearch(pool_mg_s *pm, disk_mg_s *dm, char *tname, int key)
 #define GET_MAX_KEY_FROM_PIVOT(p) (TO_BLINK_PIVOT(p))->pairs[(TO_BLINK_PIVOT(p))->header.records - 1].key
 #define GET_MIN_KEY_FROM_PIVOT(p) ((TO_BLINK_PIVOT(p))->pairs[0].key)
 #define GET_MAX_PID_FROM_PIVOT(p) (TO_BLINK_PIVOT(p))->pairs[(TO_BLINK_PIVOT(p))->header.records].cpid
+#define GET_MIN_PID_FROM_PIVOT(p) (TO_BLINK_PIVOT(p))->pairs[0].cpid
 #define SET_LEAF_UPBOUND(n, v) ((TO_BLINK_LEAF(n)->_upbound) = v)
 #define SET_PIVOT_UPBOUND(n, v) ((TO_BLINK_PIVOT(n)->pairs[PAIRENTRYS-1].key) = v)
 
@@ -951,8 +952,8 @@ void db_1_iremove(pool_mg_s *pm, disk_mg_s *dm, char *tname, int key)
         }
         cur = mp_page_open(pm, dm, page_id);
     }
-    
-    stateA = stateB = replace = replaced = b_replace = b_replaced = remove_key = remove_max = diff = 0;
+
+    stateA = stateB = replace = replaced = b_replace = b_replaced = remove_key = remove_max = diff = re = 0;
     if (blink_entry_remove_from_leaf(TO_BLINK_LEAF(cur), key, &stateA) == BLL_REMOVE_UNEXIST)
         return;
     else{
@@ -964,7 +965,7 @@ void db_1_iremove(pool_mg_s *pm, disk_mg_s *dm, char *tname, int key)
                     // error handler.
                 }
 
-                if (IS_LEAF_RECORD_ENOUGH(GET_BLINK_RECORDS(A) - 1, GET_BLINK_WIDTH(A))) {
+                if (!IS_LEAF_RECORD_ENOUGH(GET_BLINK_RECORDS(A) - 1, GET_BLINK_WIDTH(A))) {
                     if (GET_BLINK_BPID(cur) == PAGEIDNULL) {
                         /*
                          * [Node cur] <- [Node A]
@@ -1007,7 +1008,7 @@ void db_1_iremove(pool_mg_s *pm, disk_mg_s *dm, char *tname, int key)
                         B = NULL;
 
                     if (GET_BLINK_BPID(cur) == PAGEIDNULL) {
-                        /*
+                        /* 
                          * [Node cur] <- [Node B] - [Node A]
                          *
                          * Node(B) will merge to Node(cur), in this case original max entry
@@ -1027,10 +1028,10 @@ void db_1_iremove(pool_mg_s *pm, disk_mg_s *dm, char *tname, int key)
                         }
                         DIRTYSET(&cur->flags);
                         page_id = GET_BLINK_PID(cur);
-                        mp_page_ddelete(pm, dm, GET_BLINK_PID(B));
+                        mp_page_ddelete(pm, dm, GET_BLINK_PID(B), BLINK);
                         stateA &= ~BLINK_DEL_LAST_BIT;
                     }else{
-                        /*
+                        /* Cond 1
                          * [Node A] <- [Node cur] - [Node B]
                          */
                         remove_key = GET_LEAF_UPBOUND(A);
@@ -1043,7 +1044,7 @@ void db_1_iremove(pool_mg_s *pm, disk_mg_s *dm, char *tname, int key)
                             DIRTYSET(&B->flags);
                         }
                         page_id = GET_BLINK_PID(A);
-                        mp_page_ddelete(pm, dm, GET_BLINK_PID(cur));
+                        re = 1;
                     }
                     stateB |= BLINK_DEL_MERGE_BIT;
                 }
@@ -1063,6 +1064,10 @@ BLINK_TO_PREV_LEVEL:
     stateA = 0;
     if (GET_BLINK_PAR(cur) != _stack[--stack_index])
         SET_BLINK_PAR(cur, _stack[stack_index]);
+    
+    // For Cond 1
+    if (re) mp_page_ddelete(pm, dm, GET_BLINK_PID(cur), BLINK);
+    
     cur = mp_page_open(pm, dm, _stack[stack_index]);
 
     if (__REP(stateB)) {
@@ -1100,12 +1105,14 @@ BLINK_TO_PREV_LEVEL:
     if (__REM(stateB)) {
         re = blink_entry_remove_from_pivot(TO_BLINK_PIVOT(cur), remove_key, &stateA);
 
-        if (BLINK_IS_ROOT(GET_BLINK_PAGETYPE(cur)) && !GET_BLINK_RECORDS(cur)) {
-            memset(buf, 0, RTABLEENYRTSIZE);
-            memcpy(buf, tmp, ATTRSIZE);
-            memcpy(&buf[ATTRSIZE], &page_id, sizeof(uint32_t));
-            p_entry_update_by_index(blink_table->page, buf, B_LINK_PID);
-            mp_page_ddelete(pm, dm, GET_BLINK_PID(cur));
+        if (BLINK_IS_ROOT(GET_BLINK_PAGETYPE(cur))) {
+            if (!GET_BLINK_RECORDS(cur)) {
+                memset(buf, 0, RTABLEENYRTSIZE);
+                memcpy(buf, tmp, ATTRSIZE);
+                memcpy(&buf[ATTRSIZE], &page_id, sizeof(uint32_t));
+                p_entry_update_by_index(blink_table->page, buf, B_LINK_PID);
+                mp_page_ddelete(pm, dm, GET_BLINK_PID(cur), BLINK);
+            }
             goto BLINK_SKIP_PIVOT;
         }
 
@@ -1137,20 +1144,13 @@ BLINK_TO_PREV_LEVEL:
 
     if (stateB || stateA) {
         if (__REM(stateA)) {
-            if (IS_PIVOT_RECORD_ENOUGH(GET_BLINK_RECORDS(A))) {
-                if (GET_BLINK_BPID(cur) == PAGEIDNULL) {
-                    /*
-                     * [Node cur] <- [Node A]
-                     */
-                    blink_entry_insert_to_pivot(TO_BLINK_PIVOT(A), remove_max, GET_MAX_PID_FROM_PIVOT(cur));
-                    blink_entry_remove_from_pivot(TO_BLINK_PIVOT(cur), remove_key, NULL);
-                }else{
-                    /*
-                     * [Node A] -> [Node cur]
-                     */
-                    blink_entry_insert_to_pivot(TO_BLINK_PIVOT(cur), remove_max, GET_MAX_PID_FROM_PIVOT(A));
-                    blink_entry_remove_from_pivot(TO_BLINK_PIVOT(A), remove_key, NULL);
-                }
+            if (!IS_PIVOT_RECORD_ENOUGH(GET_BLINK_RECORDS(A))) {
+                /*
+                 * [Node cur] <- [Node A] or [Node A] -> [Node cur]
+                 */
+                blink_entry_insert_to_pivot(TO_BLINK_PIVOT(cur), remove_max, (GET_BLINK_BPID(cur) == PAGEIDNULL) ? \
+                                            GET_MIN_PID_FROM_PIVOT(A) : GET_MAX_PID_FROM_PIVOT(A));
+                blink_entry_remove_from_pivot(TO_BLINK_PIVOT(A), remove_key, NULL);
                 stateB &= ~BLINK_DEL_MERGE_BIT;
                 stateB |= BLINK_DEL_SIBLING_BIT;
                 b_replace = remove_key;
@@ -1173,7 +1173,7 @@ BLINK_TO_PREV_LEVEL:
                     if (B)
                         SET_BLINK_BPID(B, GET_BLINK_PID(cur));
                     page_id = GET_BLINK_PID(cur);
-                    mp_page_ddelete(pm, dm, GET_BLINK_PID(A));
+                    mp_page_ddelete(pm, dm, GET_BLINK_PID(A), BLINK);
                 }else{
                     /*
                      * [Node A] <- [Node cur] - [Node B]
@@ -1184,7 +1184,7 @@ BLINK_TO_PREV_LEVEL:
                     if (B)
                         SET_BLINK_BPID(B, GET_BLINK_PID(A));
                     page_id = GET_BLINK_PID(A);
-                    mp_page_ddelete(pm, dm, GET_BLINK_PID(cur));
+                    mp_page_ddelete(pm, dm, GET_BLINK_PID(cur), BLINK);
                 }
                 DIRTYSET(&A->flags);
                 DIRTYSET(&B->flags);
@@ -1194,6 +1194,12 @@ BLINK_TO_PREV_LEVEL:
     }
 
 BLINK_SKIP_PIVOT:
+    tmp = p_entry_read_by_index(blink_table->page, B_LINK_RECORDNUM);
+    replace = FROMATTRGETPID(tmp) - 1;
+    memset(buf, '\0', RTABLEENYRTSIZE);
+    memcpy(buf, B2, strlen(B2));
+    memcpy(&buf[ATTRSIZE], &replace, sizeof(uint32_t));
+    p_entry_update_by_index(blink_table->page, buf, B_LINK_RECORDNUM);
     return;
 }
 
@@ -1217,7 +1223,7 @@ void db_1_idelete(pool_mg_s *pm, disk_mg_s *dm, char *tname)
     type = GET_BLINK_PAGETYPE(cur);
 
     if (BLINK_IS_LEAF(type))
-        mp_page_mdelete(pm, dm, cur);
+        mp_page_mdelete(pm, dm, cur, BLINK);
     else{
         // Use to move to next level of tree.
         brk = 0;
@@ -1231,7 +1237,7 @@ void db_1_idelete(pool_mg_s *pm, disk_mg_s *dm, char *tname)
             // Use to delete level of tree.
             while (1) {
                 next = GET_BLINK_NPID(cur);
-                mp_page_mdelete(pm, dm, cur);
+                mp_page_mdelete(pm, dm, cur, BLINK);
                 if (next == PAGEIDNULL)
                     break;
                 else{
@@ -1249,7 +1255,7 @@ void db_1_idelete(pool_mg_s *pm, disk_mg_s *dm, char *tname)
         };
     }
 
-    mp_page_mdelete(pm, dm, blink_table);
+    mp_page_mdelete(pm, dm, blink_table, GENERAL);
     return;
 }
 

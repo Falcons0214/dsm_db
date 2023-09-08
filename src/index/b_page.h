@@ -14,7 +14,8 @@ typedef struct b_link_pair b_link_pair_s;
 #define BLINKPAIRSIZE 8
 #define BLINKHEADERSIZE sizeof(b_link_page_header_s)
 // #define PAIRENTRYS (int)((PAGESIZE - BLINKHEADERSIZE) / BLINKPAIRSIZE)
-#define PAIRENTRYS 7
+#define PAIRENTRYS 5
+// Pivot max records equal "PAIRENTRYS - 1"
 
 #define BLINK_ENTRY_LIMIT PAGESIZE - BLINKHEADERSIZE
 #define BLINK_LEAF_DATA_SIZE (PAGESIZE - BLINKHEADERSIZE - sizeof(uint32_t))
@@ -32,10 +33,10 @@ typedef struct b_link_pair b_link_pair_s;
 
 #define IS_LEAF_RECORD_ENOUGH(n, w) ((n) > \
         (((uint32_t)((PAGESIZE - BLINKHEADERSIZE - sizeof(uint32_t))) / (w)) / 2)) \
-        ? BLINK_DEL_MERGE_BIT : 0
+        ? 0 : BLINK_DEL_MERGE_BIT
 
 #define IS_PIVOT_RECORD_ENOUGH(n) \
-        ((n) > ((uint32_t)(PAIRENTRYS / 2) - 1)) ? BLINK_DEL_MERGE_BIT : 0
+        ((n) > ((uint32_t)(PAIRENTRYS / 2))) ? 0 : BLINK_DEL_MERGE_BIT
 
 /*
  * b_link_pivot_node insert return value

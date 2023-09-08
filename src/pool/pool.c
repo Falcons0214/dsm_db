@@ -494,22 +494,23 @@ block_s** mp_pages_create(pool_mg_s *pm, disk_mg_s *dm, int n)
  * Use to delete the page is in memory.
  * mp_pages_delete assume those pages is in same sub pool !
  */
-void mp_page_mdelete(pool_mg_s *pm, disk_mg_s *dm, block_s *block)
+void mp_page_mdelete(pool_mg_s *pm, disk_mg_s *dm, block_s *block, char type)
 {
-    uint32_t page_id = block->page->page_id;
-    avl_node_s *a_node = gpt_close_test_and_set(&pm->gpt, page_id, GNODEDESTORY, false);
+    uint32_t page_id = (type == GENERAL) ? block->page->page_id : ((b_link_leaf_page_s*)block->page)->header.pid;
+    avl_node_s *a_node = gpt_close_test_and_set(&pm->gpt, page_id, GNODEDESTORY, true);
     gnode_s *gnode = (a_node) ? (gnode_s*)a_node->obj : NULL;
-
+    
     if (!gnode) return;
 
     int spm_index = get_block_spm_index(pm, block);
 
     block->state = PAGENOTINPOOL;
     spm_free_block(&pm->sub_pool[spm_index], block);
+    printf(">> %p\n", block->page);
+    memset(block->page, 0, PAGESIZE);
     free_pages_id(pm, dm, &page_id, 1);
     gpt_remove(&pm->gpt, a_node);
     free(gnode);
-    free(a_node);
 }
 
 /* 
@@ -519,15 +520,15 @@ void mp_page_mdelete(pool_mg_s *pm, disk_mg_s *dm, block_s *block)
  * Direct free page id, so the page is still in disk, the
  * page it will cover by next write !
  */
-void mp_page_ddelete(pool_mg_s *pm, disk_mg_s *dm, uint32_t page_id)
+void mp_page_ddelete(pool_mg_s *pm, disk_mg_s *dm, uint32_t page_id, char type)
 {
-    avl_node_s *a_node = gpt_close_test_and_set(&pm->gpt, page_id, GNODEDESTORY, false);
+    avl_node_s *a_node = gpt_close_test_and_set(&pm->gpt, page_id, GNODEDESTORY, true);
     gnode_s *gnode = (a_node) ? (gnode_s*)a_node->obj : NULL;
 
     if (!gnode)
         free_pages_id(pm, dm, &page_id, 1);
     else
-        mp_page_mdelete(pm, dm, gnode->block);
+        mp_page_mdelete(pm, dm, gnode->block, type);
 }
 
 void mp_page_close(pool_mg_s *pm, disk_mg_s *dm, block_s *block, bool enforce)
@@ -543,6 +544,7 @@ void mp_page_close(pool_mg_s *pm, disk_mg_s *dm, block_s *block, bool enforce)
     block->state = PAGENOTINPOOL;
     spm_free_block(&pm->sub_pool[spm_index], block);
     gpt_remove(&pm->gpt, a_node);
+    memset(gnode->block->page, 0, PAGESIZE);
     free(gnode);
 }
 

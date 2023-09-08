@@ -14,6 +14,13 @@
 #define TABLEATTRSLIMIT 119 - 1 // --> page size / (RTABLEENTRYSIZE + SLOTSIZE)
 
 /*
+ * PAGE TYPE
+ */
+#define GENERAL 0
+#define BLINK 1
+
+
+/*
  * General table page layout:
  *
  * 0: info page id.
