@@ -139,6 +139,9 @@ uint32_t blink_pivot_split(void*, void*, uint32_t, uint32_t);
 char blink_entry_remove_from_pivot(b_link_pivot_page_s*, uint32_t, char*);
 char blink_entry_remove_from_leaf(b_link_leaf_page_s*, uint32_t, char*);
 void blink_merge_leaf(b_link_leaf_page_s*, b_link_leaf_page_s*);
-void blink_merge_pivot(b_link_pivot_page_s*, b_link_pivot_page_s*, uint32_t);
+
+#define BLINK_MERGE_GENERAL 0
+#define BLINK_MERGE_LEFTEST 1
+void blink_merge_pivot(b_link_pivot_page_s*, b_link_pivot_page_s*, uint32_t, char);
 
 #endif /* B_PAGE_H */

@@ -506,7 +506,6 @@ void mp_page_mdelete(pool_mg_s *pm, disk_mg_s *dm, block_s *block, char type)
 
     block->state = PAGENOTINPOOL;
     spm_free_block(&pm->sub_pool[spm_index], block);
-    printf(">> %p\n", block->page);
     memset(block->page, 0, PAGESIZE);
     free_pages_id(pm, dm, &page_id, 1);
     gpt_remove(&pm->gpt, a_node);

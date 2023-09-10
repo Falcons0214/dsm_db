@@ -969,8 +969,6 @@ void db_1_iremove(pool_mg_s *pm, disk_mg_s *dm, char *tname, int key)
                     if (GET_BLINK_BPID(cur) == PAGEIDNULL) {
                         /*
                          * [Node cur] <- [Node A]
-                         *
-                         * Borrow an entry from right node (A), because cur is leftest node.
                          */
                         b_replaced = (GET_LEAF_UPBOUND(cur) == key) ? \
                                      key : GET_MAX_KEY_FROM_LEAF(TO_BLINK_LEAF(cur));
@@ -981,9 +979,7 @@ void db_1_iremove(pool_mg_s *pm, disk_mg_s *dm, char *tname, int key)
                         stateA &= ~BLINK_DEL_LAST_BIT;
                     }else{
                         /*
-                         * [Node A] -> [Node cur] 
-                         *
-                         * Borrow an entry from Left node (A).
+                         * [Node A] -> [Node cur]
                          */
                         b_replaced = GET_MAX_KEY_FROM_LEAF(TO_BLINK_LEAF(A));
                         blink_entry_insert_to_leaf(TO_BLINK_LEAF(cur), blink_leaf_scan(TO_BLINK_LEAF(A), b_replaced, NULL));
@@ -1012,8 +1008,8 @@ void db_1_iremove(pool_mg_s *pm, disk_mg_s *dm, char *tname, int key)
                          * [Node cur] <- [Node B] - [Node A]
                          *
                          * Node(B) will merge to Node(cur), in this case original max entry
-                         * will cover by the entry from "Node(B)", so we reset stateB, use 
-                         * to skip it doing replace. 
+                         * will cover by the entry from "Node(B)", so if in this condition 
+                         * the BLINK_DEL_LAST_BIT is up, we will close it. 
                          */
                         remove_key = GET_LEAF_UPBOUND(cur);
                         blink_merge_leaf(TO_BLINK_LEAF(B), TO_BLINK_LEAF(cur));
@@ -1028,10 +1024,10 @@ void db_1_iremove(pool_mg_s *pm, disk_mg_s *dm, char *tname, int key)
                         }
                         DIRTYSET(&cur->flags);
                         page_id = GET_BLINK_PID(cur);
-                        mp_page_ddelete(pm, dm, GET_BLINK_PID(B), BLINK);
                         stateA &= ~BLINK_DEL_LAST_BIT;
+                        mp_page_ddelete(pm, dm, GET_BLINK_PID(B), BLINK);
                     }else{
-                        /* Cond 1
+                        /* 
                          * [Node A] <- [Node cur] - [Node B]
                          */
                         remove_key = GET_LEAF_UPBOUND(A);
@@ -1044,7 +1040,7 @@ void db_1_iremove(pool_mg_s *pm, disk_mg_s *dm, char *tname, int key)
                             DIRTYSET(&B->flags);
                         }
                         page_id = GET_BLINK_PID(A);
-                        re = 1;
+                        re = 10;
                     }
                     stateB |= BLINK_DEL_MERGE_BIT;
                 }
@@ -1065,8 +1061,10 @@ BLINK_TO_PREV_LEVEL:
     if (GET_BLINK_PAR(cur) != _stack[--stack_index])
         SET_BLINK_PAR(cur, _stack[stack_index]);
     
-    // For Cond 1
-    if (re) mp_page_ddelete(pm, dm, GET_BLINK_PID(cur), BLINK);
+    /*
+     * For merge condition.
+     */ 
+    if (re == 10) mp_page_ddelete(pm, dm, GET_BLINK_PID(cur), BLINK);
     
     cur = mp_page_open(pm, dm, _stack[stack_index]);
 
@@ -1079,7 +1077,7 @@ BLINK_TO_PREV_LEVEL:
     }
 
     if (__SIB(stateB)) {
-        if (GET_BLINK_BPID(cur) && b_replaced < GET_MIN_KEY_FROM_PIVOT(cur)) {
+        if (GET_BLINK_BPID(cur) != PAGEIDNULL && b_replaced < GET_MIN_KEY_FROM_PIVOT(cur)) {
             /*
              * Here we need open `cur` left sibling, because we borrow from left node
              * and then update it until we find the key is exist in the pivot node, if
@@ -1125,8 +1123,9 @@ BLINK_TO_PREV_LEVEL:
         if (re == BLP_REMOVE_LEFTEST)
             diff = 1;
         else{
-            remove_key = (GET_BLINK_BPID(cur) != PAGEIDNULL) ? GET_MAX_KEY_FROM_PIVOT(A) : GET_MAX_KEY_FROM_PIVOT(cur);
+            // remove_key = (GET_BLINK_BPID(cur) != PAGEIDNULL) ? GET_MAX_KEY_FROM_PIVOT(A) : GET_MAX_KEY_FROM_PIVOT(cur);
             remove_max = (GET_BLINK_BPID(cur) != PAGEIDNULL) ? GET_PIVOT_UPBOUND(A) : GET_PIVOT_UPBOUND(cur);
+            remove_key = remove_max;
             diff = 0;
         }
 
@@ -1158,36 +1157,32 @@ BLINK_TO_PREV_LEVEL:
                 DIRTYSET(&cur->flags);
                 DIRTYSET(&A->flags);
             }else{
-                if (GET_BLINK_BPID(cur) == PAGEIDNULL)
-                    B = (GET_BLINK_NPID(A) == PAGEIDNULL) ? NULL : mp_page_open(pm, dm, GET_BLINK_NPID(A));
-                else
-                    B = (GET_BLINK_NPID(cur) == PAGEIDNULL) ? NULL : mp_page_open(pm, dm, GET_BLINK_NPID(cur));
+                B = (GET_BLINK_NPID(cur) == PAGEIDNULL) ? NULL : mp_page_open(pm, dm, GET_BLINK_NPID(cur));
 
                 if (GET_BLINK_BPID(cur) == PAGEIDNULL) {
                     /*
-                     * [Node cur] <- [Node A] - [Node B]
+                     * [Node cur] -> [Node A]
                      */
-                    blink_merge_pivot(TO_BLINK_PIVOT(A), TO_BLINK_PIVOT(cur), remove_max);
-                    remove_max = GET_PIVOT_UPBOUND(cur);
-                    SET_BLINK_NPID(cur, GET_BLINK_NPID(A));
-                    if (B)
-                        SET_BLINK_BPID(B, GET_BLINK_PID(cur));
-                    page_id = GET_BLINK_PID(cur);
-                    mp_page_ddelete(pm, dm, GET_BLINK_PID(A), BLINK);
+                    blink_merge_pivot(TO_BLINK_PIVOT(cur), TO_BLINK_PIVOT(A), remove_max, BLINK_MERGE_LEFTEST);
+                    remove_max = GET_PIVOT_UPBOUND(A);
+                    SET_BLINK_BPID(A, PAGEIDNULL);
+                    page_id = GET_BLINK_PID(A);
+                    mp_page_ddelete(pm, dm, GET_BLINK_PID(cur), BLINK);
                 }else{
                     /*
                      * [Node A] <- [Node cur] - [Node B]
                      */
-                    blink_merge_pivot(TO_BLINK_PIVOT(cur), TO_BLINK_PIVOT(A), remove_max);
+                    blink_merge_pivot(TO_BLINK_PIVOT(cur), TO_BLINK_PIVOT(A), remove_max, BLINK_MERGE_GENERAL);
                     remove_max = GET_PIVOT_UPBOUND(A);
                     SET_BLINK_NPID(A, GET_BLINK_NPID(cur));
-                    if (B)
+                    if (B) {
                         SET_BLINK_BPID(B, GET_BLINK_PID(A));
+                        DIRTYSET(&B->flags);
+                    }
                     page_id = GET_BLINK_PID(A);
                     mp_page_ddelete(pm, dm, GET_BLINK_PID(cur), BLINK);
                 }
                 DIRTYSET(&A->flags);
-                DIRTYSET(&B->flags);
             }
         }
         goto BLINK_TO_PREV_LEVEL;

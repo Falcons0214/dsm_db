@@ -53,16 +53,17 @@ uint32_t blink_pivot_scan(b_link_pivot_page_s *page, uint32_t key)
     if (!page->header.records) return PAGEIDNULL;
     if (key <= page->pairs[lower].key) return page->pairs[lower].cpid;
     if (key > page->pairs[upper - 1].key) return page->pairs[upper].cpid;
-
+    if (key == page->pairs[upper - 1].key) return page->pairs[upper - 1].cpid;
+    
     while (1) {        
         index = (int)(upper + lower) / 2;
-        if (page->pairs[index].key > key)
-            upper = index;
-        else
-            lower = index;
         if (key <= page->pairs[index + 1].key && \
             key > page->pairs[index].key)
             return page->pairs[index + 1].cpid;
+        if (page->pairs[index].key >= key)
+            upper = index;
+        else
+            lower = index;
     }
     return PAGEIDNULL;
 }
@@ -188,7 +189,7 @@ bool blink_entry_update_pivot_key(b_link_pivot_page_s *page, uint32_t replace, u
     int upper = page->header.records, lower = 0, index = 0;
  
     if (replaced == page->pairs[upper - 1].key) {
-        page->pairs[upper].key = replace;
+        page->pairs[upper - 1].key = replace;
         return true;
     }
     
@@ -210,7 +211,7 @@ bool blink_entry_update_pivot_key(b_link_pivot_page_s *page, uint32_t replace, u
             return false;
     }
 
-    page->pairs[lower].key = replace;
+    page->pairs[index].key = replace;
     return true;
 }
 
@@ -329,9 +330,11 @@ char blink_entry_remove_from_pivot(b_link_pivot_page_s *page, uint32_t key, char
         }
     }
     page->header.records --;
-    *state |= IS_PIVOT_RECORD_ENOUGH(page->header.records);
-    if (BLINK_IS_ROOT(page->header.page_type))
-        *state = 0;
+    if (state) {
+        *state |= IS_PIVOT_RECORD_ENOUGH(page->header.records);
+        if (BLINK_IS_ROOT(page->header.page_type))
+            *state = 0;
+    }
     return (index != -1) ? BLP_REMOVE_ACCEPT : BLP_REMOVE_LEFTEST;
 }
 
@@ -342,8 +345,8 @@ char blink_entry_remove_from_leaf(b_link_leaf_page_s *page, uint32_t key, char *
     if (!blink_leaf_scan(page, key, &index)) return BLL_REMOVE_UNEXIST;
 
     // Check the record is it the last entry of leaf node.
-    *state = (GET_ENTRY_KEY(page->data + (index * page->header.width)) == key) ? \
-                BLINK_DEL_LAST_BIT : 0;
+    if (state)
+        *state = (GET_ENTRY_KEY(page->data + ((page->header.records - 1) * width)) == key) ? BLINK_DEL_LAST_BIT : 0;
 
     start = page->data;
     for (int i = index; i < page->header.records - 1; i ++)
@@ -352,9 +355,10 @@ char blink_entry_remove_from_leaf(b_link_leaf_page_s *page, uint32_t key, char *
     memset(start + page->header.records * width, '\0', width);
 
     // Check the leaf node is need merge, after delete a record.
-    *state |= IS_LEAF_RECORD_ENOUGH(page->header.records, page->header.width);
-    if (BLINK_IS_ROOT(page->header.page_type))
-        *state = 0;
+    if (state) {
+        *state |= IS_LEAF_RECORD_ENOUGH(page->header.records, page->header.width);
+        if (BLINK_IS_ROOT(page->header.page_type)) *state = 0;
+    }
     return BLL_REMOVE_ACCEPT;
 }
 
@@ -366,10 +370,21 @@ void blink_merge_leaf(b_link_leaf_page_s *from, b_link_leaf_page_s *to)
     to->_upbound = *((uint32_t*)(from->data + (from->header.width * (i - 1))));
 }
  
-void blink_merge_pivot(b_link_pivot_page_s *from, b_link_pivot_page_s *to, uint32_t key)
+void blink_merge_pivot(b_link_pivot_page_s *from, b_link_pivot_page_s *to, uint32_t key, char type)
 {
-    blink_entry_insert_to_pivot(to, key, from->pairs[0].cpid);
-    for (int i = 0; i < from->header.records; i ++)
-        blink_entry_insert_to_pivot(to, from->pairs[i].key, from->pairs[i + 1].cpid);
-    to->pairs[PAIRENTRYS - 1].key = from->pairs[PAIRENTRYS - 1].key;
+    if (type == BLINK_MERGE_LEFTEST) {
+        int i, from_rds = from->header.records + 1, to_rds = to->header.records;
+        to->pairs[to_rds + from_rds].cpid = to->pairs[to_rds].cpid;
+        for (i = 0; i < to_rds; i ++)
+            to->pairs[i + from_rds] = to->pairs[i];
+        for (i = 0; i < from_rds; i ++)
+            to->pairs[i] = from->pairs[i];
+        to->pairs[i - 1].key = key;
+        to->header.records += from_rds;
+    }else{
+        blink_entry_insert_to_pivot(to, key, from->pairs[0].cpid);
+        for (int i = 0; i < from->header.records; i ++)
+            blink_entry_insert_to_pivot(to, from->pairs[i].key, from->pairs[i + 1].cpid);
+        to->pairs[PAIRENTRYS - 1].key = from->pairs[PAIRENTRYS - 1].key;
+    }
 }
