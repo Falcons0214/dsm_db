@@ -628,14 +628,20 @@ char* db_1_tschema(pool_mg_s *pm, disk_mg_s *dm, char *tname)
 #define GET_BLINK_RECORDS(x) ((TO_BLINK_LEAF(x)->header).records)
 #define GET_PIVOT_UPBOUND(x) ((TO_BLINK_PIVOT(x))->pairs[PIVOTUPBOUNDINDEX].key)
 #define GET_LEAF_UPBOUND(x) ((TO_BLINK_LEAF(x))->_upbound)
+#define GET_MAX_KEY_FROM_LEAF(l) *((uint32_t*)(((l)->data) + ((l)->header.records - 1) * ((l)->header.width)))
+#define GET_MIN_KEY_FROM_LEAF(l) *((uint32_t*)((l)->data))
+#define GET_MAX_KEY_FROM_PIVOT(p) (TO_BLINK_PIVOT(p))->pairs[(TO_BLINK_PIVOT(p))->header.records - 1].key
+#define GET_MIN_KEY_FROM_PIVOT(p) ((TO_BLINK_PIVOT(p))->pairs[0].key)
+#define GET_MAX_PID_FROM_PIVOT(p) (TO_BLINK_PIVOT(p))->pairs[(TO_BLINK_PIVOT(p))->header.records].cpid
+#define GET_MIN_PID_FROM_PIVOT(p) (TO_BLINK_PIVOT(p))->pairs[0].cpid
 
+#define SET_LEAF_UPBOUND(n, v) ((TO_BLINK_LEAF(n)->_upbound) = v)
+#define SET_PIVOT_UPBOUND(n, v) ((TO_BLINK_PIVOT(n)->pairs[PAIRENTRYS-1].key) = v)
 #define SET_BLINK_PAR(node, id) ((TO_BLINK_PIVOT(node)->header).ppid = id)
 #define SET_BLINK_NPID(node, id) ((TO_BLINK_PIVOT(node)->header).npid = id)
 #define SET_BLINK_BPID(node, id) ((TO_BLINK_PIVOT(node)->header).bpid = id)
 
 #define IS_LEAF(x) (GET_BLINK_PAGETYPE(x) & LEAF_PAGE)
-// #define IS_ROOT(x) (GET_BLINK_PAGETYPE(x) & ROOT_PAGE)
-// #define IS_PIVOT(x) (GET_BLINK_PAGETYPE(x) & PIVOT_PAGE) 
 
 static char* __get_title(int x)
 {
@@ -746,7 +752,7 @@ BLINKMOVERIGHTAGAIN:
  */
 bool db_1_iinsert(pool_mg_s *pm, disk_mg_s *dm, char *tname, char *entry, uint32_t key)
 {
-    block_s *blink_table, *cur, *old, *sibling;
+    block_s *blink_table, *cur, *old, *sibling, *A;
     char *tmp, is_root = 0, rev, buf1[RTABLEENYRTSIZE];
     uint32_t page_id, tmp_key, tmp_cpid;
     uint16_t node_type;
@@ -810,7 +816,7 @@ BLINK_INSERT_TO_PREV_LEVEL:
             DIRTYSET(&blink_table->flags);
         }else{
             rev = (BLINK_IS_PIVOT(node_type)) ? \
-                blink_entry_insert_to_pivot(TO_BLINK_PIVOT(cur), tmp_key, GET_BLINK_PID(sibling)) : \
+                blink_entry_insert_to_pivot(TO_BLINK_PIVOT(cur), tmp_key, GET_BLINK_PID(sibling), SEP) : \
                 blink_entry_insert_to_leaf(TO_BLINK_LEAF(cur), entry);
             mp_release_page_wlock(cur);
             
@@ -826,11 +832,28 @@ BLINK_INSERT_TO_PREV_LEVEL:
             // err handler, sibling create error.
         }
 
+        if (GET_BLINK_NPID(cur) != PAGEIDNULL) {
+            A = mp_page_open(pm, dm, GET_BLINK_NPID(cur));
+            if (!A) {
+                // error handler.
+            }
+        }else
+            A = NULL;
+
         tmp_key = (IS_LEAF(cur)) ? blink_leaf_split(cur->page, sibling->page, entry, key) : \
                                    blink_pivot_split(cur->page, sibling->page, tmp_key, tmp_cpid);
+        tmp_cpid = GET_BLINK_PID(sibling);
+        
+        if (A) {
+            SET_BLINK_NPID(sibling, GET_BLINK_PID(A));
+            SET_BLINK_BPID(A, tmp_cpid);
+            DIRTYSET(&A->flags);
+        }else
+            SET_BLINK_NPID(sibling, PAGEIDNULL);
+        SET_BLINK_NPID(cur, tmp_cpid);
+        SET_BLINK_BPID(sibling, GET_BLINK_PID(cur));
 
         old = cur;
-        tmp_cpid = GET_BLINK_PID(sibling);
         DIRTYSET(&old->flags);
         DIRTYSET(&sibling->flags);
 
@@ -839,7 +862,7 @@ BLINK_INSERT_TO_PREV_LEVEL:
             cur = mp_index_create(pm, dm, ROOT_PAGE | PIVOT_PAGE, BLINKPAIRSIZE);
             GET_BLINK_PAGETYPE(old) &= ~ROOT_PAGE;
             SET_BLINK_PAR(old, GET_BLINK_PID(cur));
-            blink_pivot_set(TO_BLINK_PIVOT(cur), tmp_key, GET_BLINK_PID(old), GET_BLINK_PID(sibling));
+            blink_pivot_set(TO_BLINK_PIVOT(cur), tmp_key, GET_BLINK_PID(old), tmp_cpid);
             DIRTYSET(&cur->flags);
         }else{
             /*
@@ -917,15 +940,6 @@ char* db_1_isearch(pool_mg_s *pm, disk_mg_s *dm, char *tname, int key)
     tmp = blink_leaf_scan(TO_BLINK_LEAF(cur), key, NULL);
     return tmp;
 } 
-
-#define GET_MAX_KEY_FROM_LEAF(l) *((uint32_t*)(((l)->data) + ((l)->header.records - 1) * ((l)->header.width)))
-#define GET_MIN_KEY_FROM_LEAF(l) *((uint32_t*)((l)->data))
-#define GET_MAX_KEY_FROM_PIVOT(p) (TO_BLINK_PIVOT(p))->pairs[(TO_BLINK_PIVOT(p))->header.records - 1].key
-#define GET_MIN_KEY_FROM_PIVOT(p) ((TO_BLINK_PIVOT(p))->pairs[0].key)
-#define GET_MAX_PID_FROM_PIVOT(p) (TO_BLINK_PIVOT(p))->pairs[(TO_BLINK_PIVOT(p))->header.records].cpid
-#define GET_MIN_PID_FROM_PIVOT(p) (TO_BLINK_PIVOT(p))->pairs[0].cpid
-#define SET_LEAF_UPBOUND(n, v) ((TO_BLINK_LEAF(n)->_upbound) = v)
-#define SET_PIVOT_UPBOUND(n, v) ((TO_BLINK_PIVOT(n)->pairs[PAIRENTRYS-1].key) = v)
 
 void db_1_iremove(pool_mg_s *pm, disk_mg_s *dm, char *tname, int key)
 {
@@ -1083,6 +1097,7 @@ BLINK_TO_PREV_LEVEL:
              * and then update it until we find the key is exist in the pivot node, if
              * not update its upper bound.
              */
+             printf("!!\n");
             A = mp_page_open(pm, dm, GET_BLINK_BPID(cur));
             if (blink_entry_update_pivot_key(TO_BLINK_PIVOT(A), b_replace, b_replaced))
                 stateB &= ~BLINK_DEL_SIBLING_BIT;
@@ -1147,8 +1162,9 @@ BLINK_TO_PREV_LEVEL:
                 /*
                  * [Node cur] <- [Node A] or [Node A] -> [Node cur]
                  */
+                remove_key = GET_MAX_KEY_FROM_PIVOT(A);
                 blink_entry_insert_to_pivot(TO_BLINK_PIVOT(cur), remove_max, (GET_BLINK_BPID(cur) == PAGEIDNULL) ? \
-                                            GET_MIN_PID_FROM_PIVOT(A) : GET_MAX_PID_FROM_PIVOT(A));
+                                            GET_MIN_PID_FROM_PIVOT(A) : GET_MAX_PID_FROM_PIVOT(A), MOVE);
                 blink_entry_remove_from_pivot(TO_BLINK_PIVOT(A), remove_key, NULL);
                 stateB &= ~BLINK_DEL_MERGE_BIT;
                 stateB |= BLINK_DEL_SIBLING_BIT;

@@ -68,27 +68,28 @@ char* b_type_str(uint16_t type)
         return "BLINK_PIVOT";
 }
 
-bool show_page_info(page_s *page)
+// !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+bool show_page_info(page_s *page, int i)
 {
     b_link_leaf_page_s *b = (b_link_leaf_page_s*)page;
-    if (BLINK_IS_LEAF(b->header.page_type) || BLINK_IS_PIVOT(b->header.page_type)) {
+    // BLINK_IS_LEAF(b->header.page_type) || BLINK_IS_PIVOT(b->header.page_type)
+    if (i > 3) {
         printf("        -> Page pid: %d\n", b->header.pid);
         printf("        -> Page ppid: %d\n", b->header.ppid);
         printf("        -> Page npid: %d\n", b->header.npid);
         printf("        -> Page recrod: %d\n", b->header.records);
         printf("        -> Page data_width: %d\n", b->header.width);
-        printf("        -> Page ty: %d\n", b->header.page_type);
         if(BLINK_IS_LEAF(b->header.page_type))
             printf("        -> Page leaf Upper Bound: %d\n", b->_upbound);
         else
             printf("        -> Page pivot Upper Bound: %d\n", ((b_link_pivot_page_s*)b)->pairs[PIVOTUPBOUNDINDEX].key);
-        printf("        -> Page tpye: <%s>\n", b_type_str(b->header.page_type));
+        printf("        -> Page type: <%s>\n", b_type_str(b->header.page_type));
         return false;
     }else{
         printf("        -> Page id: %d\n", page->page_id);
         printf("        -> Page recrod: %d\n", page->record_num);
         printf("        -> Page data_width: %d\n", page->data_width);
-        printf("        -> Page tpye: <%s>\n", page_type_str(page->page_type));
+        printf("        -> Page type: <%s>\n", page_type_str(page->page_type));
         return true;
     }
 }
@@ -119,7 +120,7 @@ void show_blink_entry(page_s *page)
             print(start + width * i);
     }
     
-    if ( BLINK_IS_PIVOT(type)){
+    if (BLINK_IS_PIVOT(type)){
         b_link_pivot_page_s *p = (b_link_pivot_page_s*)b;
         for (int i = 0; i < n; i ++) {
             printf("----> Pivot [key]: %d\n", p->pairs[i].key);
@@ -182,7 +183,7 @@ void show_table_page_entry(page_s *page)
         entry ++;
         memcpy(buf, tmp, 28);
         memcpy(&pid, &tmp[28], 4);
-        printf("    attr name: %s, id: %d\n", buf, pid);
+        printf("    attr name: %s, value: %d\n", buf, pid);
     }
 }
 
@@ -232,7 +233,7 @@ void show_pages_info(int n)
             printf("    -> Address start: %p\n", &pm->sub_pool[i].buf_list[h]);
             printf("    -> Reference: %d\n", pm->sub_pool[i].buf_list[h].reference_count);
             printf("    -> Page Address: %p\n", pm->sub_pool[i].buf_list[h].page);
-            ptype = show_page_info(pm->sub_pool[i].buf_list[h].page);
+            ptype = show_page_info(pm->sub_pool[i].buf_list[h].page, i * SUBPOOLBLOCKS + h);
             printf("<---- Page entry start ---->\n");
             
             if (ptype) {
@@ -476,7 +477,7 @@ void test_b_link_insert()
     bool ac = db_1_icreate(pm, dm, tname, attrns, attrs, types);
     if (ac) {
         struct car c1;
-        int num = 36;
+        int num = 48;
 
         for (int i = 0; i < num; i++) {
             c1.ckey = i+10;
@@ -486,8 +487,15 @@ void test_b_link_insert()
             memset(c1.padding, 'A', 30);
             db_1_iinsert(pm, dm, tname, (char*)&c1, c1.ckey);
         }
+
+        // c1.ckey = 9;
+        // memset(c1.name, 0, 20);
+        // memset(c1.padding, 0, PAD);
+        // sprintf(c1.name, "CarZZ:%d", 899);
+        // memset(c1.padding, 'A', 30);
+        // db_1_iinsert(pm, dm, tname, (char*)&c1, c1.ckey);
     }
-    printf("B_Link test End\n");
+    // printf("B_Link test End\n");
 }
 
 void* binsert(void *arg)
@@ -522,7 +530,7 @@ void test_b_link_insert_con()
     }
     sprintf(attrns[0], "PKEY");
     sprintf(attrns[1], "Name");
-    sprintf(attrns[2], "Descript");
+    sprintf(attrns[2], "Descript"); 
     
     int pnum = 2, p[2] = {10, 30};
     pthread_t pids[pnum];
@@ -537,6 +545,27 @@ void test_b_link_insert_con()
     }
 
     // printf("B_Link Insert concurrency test End\n");
+}
+
+void bremove()
+{
+    char *tname = "blink001";
+    int key = 25;
+    db_1_iremove(pm, dm, tname, key);
+}
+
+void __printgpt(avl_node_s *n)
+{
+    if (n) {
+        __printgpt(n->left);
+        printf("--> %d %p\n", ((gnode_s*)n->obj)->pid, ((gnode_s*)n->obj)->block->page);
+        __printgpt(n->right);
+    }
+}
+
+void __print()
+{
+    __printgpt(pm->gpt.glist.root);
 }
 
 int main()
@@ -559,15 +588,17 @@ int main()
     // table_remove();
     // db_1_tdelete(pm, dm, "table_0214");
 
-    // test_b_link_insert();
-    test_b_link_insert_con();
+    test_b_link_insert();
+    // test_b_link_insert_con();
+    // __print();
 
+    bremove();
     show_pages_info(2);
 
     // printf("\n%s\n", db_1_tschema(pm, dm, "table_0214"));
 
     mp_pool_close(pm, dm);
     dk_dm_close(dm);
-    // printf("END\n");
+    printf("_____END\n");
     return 0;
 }

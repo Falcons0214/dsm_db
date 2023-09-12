@@ -116,7 +116,10 @@ void blink_pivot_init(b_link_pivot_page_s*, uint32_t, uint32_t, uint32_t, \
 
 uint32_t blink_pivot_scan(b_link_pivot_page_s*, uint32_t);
 char* blink_leaf_scan(b_link_leaf_page_s*, uint32_t, uint32_t*);
-char blink_entry_insert_to_pivot(b_link_pivot_page_s*, uint32_t, uint32_t);
+
+#define SEP 0
+#define MOVE 1
+char blink_entry_insert_to_pivot(b_link_pivot_page_s*, uint32_t, uint32_t, char);
 char blink_entry_insert_to_leaf(b_link_leaf_page_s*, char*);
 char blink_entry_update_leaf(b_link_leaf_page_s*, uint32_t, char*);
 bool blink_entry_update_pivot_key(b_link_pivot_page_s*, uint32_t, uint32_t);
