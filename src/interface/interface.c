@@ -1097,7 +1097,6 @@ BLINK_TO_PREV_LEVEL:
              * and then update it until we find the key is exist in the pivot node, if
              * not update its upper bound.
              */
-             printf("!!\n");
             A = mp_page_open(pm, dm, GET_BLINK_BPID(cur));
             if (blink_entry_update_pivot_key(TO_BLINK_PIVOT(A), b_replace, b_replaced))
                 stateB &= ~BLINK_DEL_SIBLING_BIT;
