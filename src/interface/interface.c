@@ -959,7 +959,7 @@ void db_1_iremove(pool_mg_s *pm, disk_mg_s *dm, char *tname, int key)
     cur = mp_page_open(pm, dm, FROMATTRGETPID(tmp));
 
     while (!IS_LEAF(cur)) {
-        _stack[stack_index++] = GET_BLINK_PID(cur);
+        _stack[stack_index ++] = GET_BLINK_PID(cur);
         page_id = blink_pivot_scan(TO_BLINK_PIVOT(cur), key);
         if (page_id == PAGEIDNULL) {
             return;
@@ -1054,7 +1054,7 @@ void db_1_iremove(pool_mg_s *pm, disk_mg_s *dm, char *tname, int key)
                             DIRTYSET(&B->flags);
                         }
                         page_id = GET_BLINK_PID(A);
-                        re = 10;
+                        re = BLP_RESERV_VALUE;
                     }
                     stateB |= BLINK_DEL_MERGE_BIT;
                 }
@@ -1072,13 +1072,13 @@ void db_1_iremove(pool_mg_s *pm, disk_mg_s *dm, char *tname, int key)
 
 BLINK_TO_PREV_LEVEL:
     stateA = 0;
-    if (GET_BLINK_PAR(cur) != _stack[--stack_index])
+    if (GET_BLINK_PAR(cur) != _stack[-- stack_index])
         SET_BLINK_PAR(cur, _stack[stack_index]);
     
     /*
      * For merge condition.
      */ 
-    if (re == 10) mp_page_ddelete(pm, dm, GET_BLINK_PID(cur), BLINK);
+    if (re == BLP_RESERV_VALUE) mp_page_ddelete(pm, dm, GET_BLINK_PID(cur), BLINK);
     
     cur = mp_page_open(pm, dm, _stack[stack_index]);
 
@@ -1098,10 +1098,7 @@ BLINK_TO_PREV_LEVEL:
              * not update its upper bound.
              */
             A = mp_page_open(pm, dm, GET_BLINK_BPID(cur));
-            if (blink_entry_update_pivot_key(TO_BLINK_PIVOT(A), b_replace, b_replaced))
-                stateB &= ~BLINK_DEL_SIBLING_BIT;
-            else
-                SET_PIVOT_UPBOUND(A, b_replace);
+            SET_PIVOT_UPBOUND(A, b_replace);
         }else{
             /*
              * Here we can sure the `b_replaced` is exist, because above condition check

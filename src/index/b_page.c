@@ -50,7 +50,7 @@ uint32_t blink_pivot_scan(b_link_pivot_page_s *page, uint32_t key)
 {
     int upper = page->header.records;
     int lower = 0, index = 0;
-    if (!page->header.records) return PAGEIDNULL;
+    // if (!page->header.records) return PAGEIDNULL;
     if (key <= page->pairs[lower].key) return page->pairs[lower].cpid;
     if (key > page->pairs[upper - 1].key) return page->pairs[upper].cpid;
     if (key == page->pairs[upper - 1].key) return page->pairs[upper - 1].cpid;

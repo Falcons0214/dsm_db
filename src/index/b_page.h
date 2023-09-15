@@ -57,6 +57,8 @@ typedef struct b_link_pair b_link_pair_s;
 #define BLP_REMOVE_ACCEPT 1
 #define BLP_REMOVE_LEFTEST 2
 
+#define BLP_RESERV_VALUE 10
+
 /*
  * b_link_leaf_node remove return value
  */
