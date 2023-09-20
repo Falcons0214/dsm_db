@@ -41,5 +41,5 @@ void db_1_iremove(pool_mg_s*, disk_mg_s*, char*, int);
 char* db_1_isearch(pool_mg_s*, disk_mg_s*, char*, int);
 char* db_1_ischema(pool_mg_s*, disk_mg_s*, int, char*);
 
-block_s* db_1_topen(pool_mg_s*, disk_mg_s*, char*);
+block_s* db_1_topen(pool_mg_s*, disk_mg_s*, char*, char);
 #endif /* INTERFACE_H */

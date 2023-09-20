@@ -81,6 +81,7 @@ void spm_free_block(sub_pool_s *spm, block_s *block)
     spm->empty_block = block;
     block->priority = 0;
     block->flags = 0;
+    if (block->tmp) free(block->tmp);
     pthread_mutex_unlock(&spm->sp_block_mutex);
     OCCUPYCLEAR(&block->flags);
 }
@@ -93,6 +94,7 @@ void spm_free_blocks(sub_pool_s *spm, block_s **blocks, int n)
         blocks[i]->next_empty = spm->empty_block;
         blocks[i]->priority = 0;
         blocks[i]->flags = 0;
+        if (blocks[i]->tmp) free(blocks[i]->tmp);
         spm->empty_block = blocks[i];
         OCCUPYCLEAR(&blocks[i]->flags);
     }
@@ -298,7 +300,7 @@ pool_mg_s* mp_pool_open(bool init, disk_mg_s *dm)
         tmp_b->flags = 0; 
         atomic_init(&tmp_b->reference_count, 0);
         pthread_rwlock_init(&tmp_b->rwlock, NULL);
-        // rwlock_init(&(tmp_b->rwlock));
+        tmp_b->tmp = NULL;
     }
 
     if (init)

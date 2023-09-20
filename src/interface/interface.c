@@ -7,6 +7,7 @@
 #include <sys/types.h>
 #include <errno.h>
 
+#include "../latch/isdlock.h"
 #include "../../include/interface.h"
 #include "../../include/page.h"
 #include "../../include/db.h"
@@ -210,7 +211,7 @@ static bool table_record_update(pool_mg_s *pm, disk_mg_s *dm, block_s *root_tabl
 }
 
 /*---------- <High level function call for general table operations> ----------*/
-block_s* db_1_topen(pool_mg_s *pm, disk_mg_s *dm, char *tname)
+block_s* db_1_topen(pool_mg_s *pm, disk_mg_s *dm, char *tname, char type)
 {
     /*
      * First we find from hash table, if table can't find from hash table
@@ -228,6 +229,10 @@ block_s* db_1_topen(pool_mg_s *pm, disk_mg_s *dm, char *tname)
             return NULL;
         }
         djb2_push(pm->hash_table, tname, tblock);
+        if (type == BLINK) {
+            tblock->tmp = (void*)malloc(sizeof(isdlock_s));
+            isd_init((isdlock_s*)tblock->tmp);
+        }
     }
 
     return tblock;
@@ -322,7 +327,7 @@ void db_1_tread(pool_mg_s *pm, disk_mg_s *dm, int fd, char *tname, char **attrs,
  */
 bool db_1_tinsert(pool_mg_s *pm, disk_mg_s *dm, char *tname, char **attrs, int *types)
 {
-    block_s *root_table = db_1_topen(pm, dm, tname);
+    block_s *root_table = db_1_topen(pm, dm, tname, GENERAL);
     block_s *attr_tblock, *prev_block, *data_block;
     char buf6[ATTRTABLEENTRYSIZE], *tmp;
     int brk, attr_table_records;
@@ -491,7 +496,7 @@ char* __do_rep(pool_mg_s *pm, disk_mg_s *dm, block_s *attr_tblock)
  */
 bool db_1_tremove_by_index(pool_mg_s *pm, disk_mg_s *dm, char *tname, int record_index)
 {
-    block_s *root_table = db_1_topen(pm, dm, tname);
+    block_s *root_table = db_1_topen(pm, dm, tname, GENERAL);
     block_s *attr_tblock, *data_block, *info_block;
     char *tmp, buf6[ATTRTABLEENTRYSIZE];
     int index, brk, records, trecord;
@@ -596,7 +601,7 @@ bool db_1_tremove_by_index(pool_mg_s *pm, disk_mg_s *dm, char *tname, int record
 
 char* db_1_tschema(pool_mg_s *pm, disk_mg_s *dm, char *tname)
 {
-    block_s *root_table = db_1_topen(pm, dm, tname);
+    block_s *root_table = db_1_topen(pm, dm, tname, GENERAL);
     char *tmp, *chunk = (char*)malloc(sizeof(char)*CHUNKSIZE);
 
     if (!root_table || !chunk) {
@@ -718,6 +723,8 @@ bool db_1_icreate(pool_mg_s *pm, disk_mg_s *dm, char *tname, char **attrs, int a
         return false;
     }
     djb2_push(pm->hash_table, tname, blink_table);
+    blink_table->tmp = (void*)malloc(sizeof(isdlock_s));
+    isd_init((isdlock_s*)blink_table->tmp);
     return true;
 }
 
@@ -758,7 +765,7 @@ bool db_1_iinsert(pool_mg_s *pm, disk_mg_s *dm, char *tname, char *entry, uint32
     uint16_t node_type;
     int _stack[BLINKSTACKSIZE], stack_index = 0;
 
-    blink_table = db_1_topen(pm, dm, tname);
+    blink_table = db_1_topen(pm, dm, tname, BLINK);
     if (!blink_table) {
         // err handler, index open failed.
     }
@@ -768,6 +775,8 @@ bool db_1_iinsert(pool_mg_s *pm, disk_mg_s *dm, char *tname, char *entry, uint32
     if (!cur) {
         // err handler, index root open failed.
     }
+
+    isd_is_require((isdlock_s*)blink_table->tmp);
 
     /*
      * Use pivot scan find target leaf node.
@@ -896,6 +905,9 @@ BLINK_INSERT_TO_PREV_LEVEL:
     memcpy(&buf1[ATTRSIZE], &tmp_key, sizeof(uint32_t));
     p_entry_update_by_index(blink_table->page, buf1, B_LINK_RECORDNUM);
     mp_release_page_wlock(blink_table);
+
+    isd_is_release((isdlock_s*)blink_table->tmp);
+
     return true;
 }
 
@@ -905,11 +917,13 @@ char* db_1_isearch(pool_mg_s *pm, disk_mg_s *dm, char *tname, int key)
     char *tmp;
     uint32_t page_id, upbound;
 
-    blink_table = db_1_topen(pm, dm, tname);
+    blink_table = db_1_topen(pm, dm, tname, BLINK);
     if (!blink_table) {
         // err handler, index open failed.
         return NULL;
     }
+
+    isd_is_require((isdlock_s*)blink_table->tmp);
 
     tmp = p_entry_read_by_index(blink_table->page, B_LINK_PID);
     cur = mp_page_open(pm, dm, FROMATTRGETPID(tmp));
@@ -938,6 +952,9 @@ char* db_1_isearch(pool_mg_s *pm, disk_mg_s *dm, char *tname, int key)
     }
 
     tmp = blink_leaf_scan(TO_BLINK_LEAF(cur), key, NULL);
+
+    isd_is_release((isdlock_s*)blink_table->tmp);
+
     return tmp;
 } 
 
@@ -948,15 +965,16 @@ void db_1_iremove(pool_mg_s *pm, disk_mg_s *dm, char *tname, int key)
     char *tmp, stateA, stateB, diff, re, buf[RTABLEENYRTSIZE];
     int _stack[BLINKSTACKSIZE], stack_index = 0;
 
-    // It should lock tree root from here ...
-
-    blink_table = db_1_topen(pm, dm, tname);
+    blink_table = db_1_topen(pm, dm, tname, BLINK);
     if (!blink_table) {
         // err handler, index open failed.
     }
 
     tmp = p_entry_read_by_index(blink_table->page, B_LINK_PID);
     cur = mp_page_open(pm, dm, FROMATTRGETPID(tmp));
+
+    // It should lock tree root from here ...
+    isd_d_require((isdlock_s*)blink_table->tmp);
 
     while (!IS_LEAF(cur)) {
         _stack[stack_index ++] = GET_BLINK_PID(cur);
@@ -1207,6 +1225,8 @@ BLINK_SKIP_PIVOT:
     memcpy(buf, B2, strlen(B2));
     memcpy(&buf[ATTRSIZE], &replace, sizeof(uint32_t));
     p_entry_update_by_index(blink_table->page, buf, B_LINK_RECORDNUM);
+
+    isd_d_release((isdlock_s*)blink_table->tmp);
     return;
 }
 
@@ -1274,7 +1294,7 @@ char* db_1_ischema(pool_mg_s *pm, disk_mg_s *dm, int fd, char *tname)
         return NULL;
     }
 
-    blink_table = db_1_topen(pm, dm, tname);
+    blink_table = db_1_topen(pm, dm, tname, BLINK);
     if (!blink_table) {
         // err handler, index open failed.
         return NULL;

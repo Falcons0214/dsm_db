@@ -2,7 +2,6 @@
 #define HASH_TABLE_H
 
 #include <pthread.h>
-// #include <stdint.h>
 #include <stdbool.h>
 #include "../include/block.h"
 
