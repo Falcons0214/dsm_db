@@ -1,5 +1,5 @@
-#ifndef NET_H
-#define NET_H
+#ifndef DB_CLIENT_H
+#define DB_CLIENT_H
 
 #include <arpa/inet.h>	/* inet(3) functions */
 #include <fcntl.h>		/* for nonblocking */
@@ -15,26 +15,11 @@
 #include <sys/types.h>
 #include <string.h>
 
-#include "../common/linklist.h"
-#include "../common/threadpool.h"
-#include "block.h"
-#include "disk.h"
-#include "pool.h"
-
-typedef struct sys_args sys_args_s;
-typedef struct conn_info conn_info_s;
-typedef struct conn_manager conn_manager_s;
+typedef struct ctoken ctoken_s;
+typedef struct __reply __reply;
 
 #define BUFSIZE 1024
-
-#define FD_RECYCLE_THRESHOLD 32
-#define SYSRESERVFD 5
-#define MAX_CMDLEN 512
-#define MAX_CONNECTIONS 512
-#define FDLIMIT MAX_CONNECTIONS + SYSRESERVFD
 #define LISTENQ 1024
-
-#define CHUNKSIZE 4096
 
 /*
  * Protocol Format:
@@ -76,24 +61,19 @@ typedef struct conn_manager conn_manager_s;
  * G: for general table operaitons.
  * I: for Index table operations.
  */
-
 #define CMD_G_CREATE 0 // table name
 #define CMD_G_DELETE 1 // table name
 #define CMD_G_INSERT 2 // table name & record attributes value
-#define CMD_G_REMOVE 3 // record number
-#define CMD_G_SEARCH 4 // record number
+#define CMD_G_REMOVE 3 // table name & record number
+#define CMD_G_SEARCH 4 // table name & record number
 #define CMD_G_READ 10 // table name
 
 #define CMD_I_CREATE 5 // table name
 #define CMD_I_DELETE 6 // table name
 #define CMD_I_INSERT 7 // table name & record attribtues value
-#define CMD_I_REMOVE 8 // record key
-#define CMD_I_SEARCH 9 // record key
+#define CMD_I_REMOVE 8 // table name & record key
+#define CMD_I_SEARCH 9 // table name & record key
 #define CMD_I_READ 11 // table name
-
-#define CONTENT_STATE_BIT 0x00010000
-#define IS_CONTENT_UP(x) (x & CONTENT_STATE_BIT)
-#define __SKIP_CSBIT(x) (x & ~CONTENT_STATE_BIT)
 
 /*
  * MSG_TYPE_STATE state:
@@ -101,46 +81,43 @@ typedef struct conn_manager conn_manager_s;
 #define TYPE_STATE_ACCEPT 0
 #define TYPE_STATE_CMDNOTFOUND 1
 
-struct sys_args
+/*
+ * Table Commnad Value
+ */
+#define TG_CREATE "gcreate"
+#define TG_DELETE "gdelete"
+#define TG_INSERT "ginsert"
+#define TG_REMOVE "gremove"
+#define TG_SEARCH "gsearch"
+#define TG_READ "gread"
+
+#define TI_CREATE "icreate"
+#define TI_DELETE "idelete"
+#define TI_INSERT "iinsert"
+#define TI_REMOVE "iremove"
+#define TI_SEARCH "isearch"
+#define TI_READ "iread"
+
+#define CONTENT_STATE_BIT 0x00010000
+#define IS_CONTENT_UP(x) (x & CONTENT_STATE_BIT)
+#define __SKIP_CSBIT(x) (x & ~CONTENT_STATE_BIT)
+
+struct __reply
 {
-    disk_mg_s *dm;
-    pool_mg_s *pm;
-    conn_manager_s *connmg;
+    char type;
+    char *content;
+    int len;
 };
 
-struct mnode
+struct ctoken
 {
-    list_node_s link;
-    block_s *block;
+    int serv_fd;
+    struct sockaddr_in servaddr;
+    // __reply *reply;
 };
 
-#define CINFO_CLOSE_BIT 0x00000001
-#define CINFO_CLOSE_UP(flags) *flags |= CINFO_CLOSE_BIT
-#define CINFO_GET_CLOSE_BIT(flags) flags & CINFO_CLOSE_BIT
-struct conn_info
-{
-    int fd;
-    uint32_t flags;
-    list_s modift_list;
-};
+ctoken_s* dsm_connect(char *ip, int port);
+void dsm_close(ctoken_s *token);
+__reply* dsm_table_cmd(ctoken_s *token, int args, char **argv);
 
-struct conn_manager
-{
-    conn_info_s *conn_table[MAX_CONNECTIONS];
-    int connection;
-    int epoll_fd;
-    tpool_t tesk_pool;
-};
-
-int tcp_listen(const char*, const char*, socklen_t*);
-void* exec(void*);
-int db_active(disk_mg_s*, pool_mg_s*, conn_manager_s*, char*);
-
-void connmg_init(conn_manager_s *connmg);
-conn_info_s* conn_create(int);
-void conn_close(conn_info_s*);
-
-int cmd_checker(char, char*, int);
-void executer(sys_args_s*, conn_info_s*, uint32_t, char*, int);
-
-#endif /* NET_H */
+#endif /* DB_CLIENT_H */

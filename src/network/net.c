@@ -1,13 +1,21 @@
-#include <asm-generic/errno-base.h>
-#include <asm-generic/socket.h>
+// #include <asm-generic/errno-base.h>
+// #include <asm-generic/socket.h>
+#include <complex.h>
 #include <errno.h>
+#include <stdint.h>
 #include <stdio.h>
+#include <string.h>
 #include <sys/epoll.h>
 #include <sys/socket.h>
 #include <unistd.h>
+
 #include "../../include/net.h"
 #include "../../include/cmd.h"
 #include "../../include/wrap.h"
+
+#define __REPLY(sock_fd, msg_type, msg_value) \
+		send(sock_fd, &msg_type, MSG_TYPE_SIZE, 0); \
+		send(sock_fd, &msg_value, MSG_LENGTH_SIZE, 0);
 
 /*
  * Structure for hook system information.
@@ -55,7 +63,7 @@ int tcp_listen(const char *host, const char *serv, socklen_t *addrlenp)
 	if (addrlenp)
 		*addrlenp = res->ai_addrlen;	/* return size of protocol address */
 	freeaddrinfo(ressave);
-	return(listenfd);
+	return listenfd;
 }
 
 void connmg_init(conn_manager_s *connmg)
@@ -73,23 +81,22 @@ conn_info_s* conn_create(int fd)
 		// err handler
 	}
 	conninfo->fd = fd;
+	conninfo->flags = 0;
 	return conninfo;
 }
 
 void conn_close(conn_info_s *conn)
 {
 	conn_manager_s *connmg = sysargs.connmg;
-	connmg->conn_table[conn->fd - SYSRESERVFD] = NULL;
 
-	if (epoll_ctl(connmg->epoll_fd, EPOLL_CTL_ADD, conn->fd, NULL) == -1) {
-		perror("epoll_ctl: listen_sock");
+	if (epoll_ctl(connmg->epoll_fd, EPOLL_CTL_DEL, conn->fd, NULL) == -1) {
+		perror("epoll_ctl: close");
 		exit(EXIT_FAILURE);
-	}	
-
-	// do somehting need for close.
-
-	close(conn->fd);
+	}
+	
+	connmg->conn_table[conn->fd - SYSRESERVFD] = NULL;
 	connmg->connection --;
+	close(conn->fd);
 	free(conn);
 }
 
@@ -97,31 +104,51 @@ void* exec(void *args)
 {
 	conn_info_s *conn = (conn_info_s*)args;
 	conn_manager_s *connmg = sysargs.connmg;
-	char cmd[MAX_CMDLEN];
-	int re_by_recv, cfd = conn->fd;
+	char msg_type, buf[MAX_CMDLEN];
+	int cmd_number;
+	if (!conn) return NULL;
 	
-	re_by_recv = recv(cfd, cmd, MAX_CMDLEN, 0);
+	int cfd = conn->fd, __cmd, msg_value;
+	switch (recv(cfd, &msg_type, MSG_TYPE_SIZE, 0)) {
+		case -1:
+			printf("recv error: %s\n", strerror(errno));
+			return NULL;
+		case 0:
+			if (CINFO_GET_CLOSE_BIT(conn->flags)) {
+				conn_close(conn);
+				printf("%d close\n", cfd);
+				return NULL;
+			}
+			break;
+		default:
+			break;
+	}
+	recv(cfd, &msg_value, MSG_LENGTH_SIZE, 0);
+	if (msg_type == MSG_TYPE_CMD)
+		recv(cfd, buf, msg_value + 4, 0);
 
-	printf("--> %d\n", re_by_recv);
-	if (re_by_recv <= 0) {
-		if (re_by_recv == -1) {
-			// err handler
-		}else
-			conn_close(connmg->conn_table[cfd - SYSRESERVFD]);
-	}else
-		executer(&sysargs, conn, cmd);
-	
+	if (msg_type == MSG_TYPE_CONNECT && msg_value == TYPE_CONNECT_EXIT)
+		CINFO_CLOSE_UP(&(conn->flags));
+	else {
+		memcpy(&cmd_number, buf, sizeof(int));
+		executer(&sysargs, conn, cmd_number, &buf[5], msg_value);
+	}
+
+	if (cfd > FD_RECYCLE_THRESHOLD) 
+		for (int i = 0; i < MAX_CONNECTIONS; i ++)
+			if (connmg->conn_table[i] && CINFO_GET_CLOSE_BIT(connmg->conn_table[i]->flags))
+				conn_close(connmg->conn_table[i]);
 	return NULL;
 }
 
 int db_active(disk_mg_s *dm, pool_mg_s *pm, conn_manager_s *connmg, char *port)
 {
 	struct epoll_event ev, events[MAX_CONNECTIONS];
-	int listen_sock, conn_sock, nfds, epollfd, flags;
+	int listen_sock, conn_sock, nfds, epollfd, flags, msg_value;
 	socklen_t addrlen;
 	struct sockaddr_storage	connaddr;
 	tpool_future_t future;
-	char *buf;
+	char msg_type;
 
 	/*
 	 * Hook system args.
@@ -131,8 +158,6 @@ int db_active(disk_mg_s *dm, pool_mg_s *pm, conn_manager_s *connmg, char *port)
 	sysargs.connmg = connmg;
 
 	listen_sock = tcp_listen(NULL, port, NULL);
-
-	// int buffer_len = 512;
 	// setsockopt(listen_sock, SOL_SOCKET, SO_SNDBUF, (void*)&buffer_len, buffer_len);
 
 	/*
@@ -158,6 +183,7 @@ int db_active(disk_mg_s *dm, pool_mg_s *pm, conn_manager_s *connmg, char *port)
 
 	for (;;) {
 		nfds = epoll_wait(epollfd, events, MAX_CONNECTIONS, -1);
+
 		if (nfds == -1) {
 			perror("epoll_wait");
 			exit(EXIT_FAILURE);
@@ -180,8 +206,9 @@ int db_active(disk_mg_s *dm, pool_mg_s *pm, conn_manager_s *connmg, char *port)
 					exit(EXIT_FAILURE);
 				}else{
 					if (cfd >= FDLIMIT) {
-						buf = SYSTEMBUSY;
-						send(conn_sock, buf, strlen(buf), 0);
+						msg_type = MSG_TYPE_CONNECT;
+						msg_value = TYPE_CONNECT_FDEXD;
+						__REPLY(conn_sock, msg_type, msg_value)
 						close(conn_sock);
 					}else{
 						/*
@@ -203,11 +230,14 @@ int db_active(disk_mg_s *dm, pool_mg_s *pm, conn_manager_s *connmg, char *port)
 							// err handler, for conn create fail.
 						}
 						connmg->conn_table[conn_sock  - SYSRESERVFD] = conn;
-						buf = BINDINGAC;
-						send(conn_sock, buf, strlen(buf), 0);
+						msg_type = MSG_TYPE_CONNECT;
+						msg_value = TYPE_CONNECT_BIND;
+						__REPLY(conn_sock, msg_type, msg_value)
+					 	printf("BB fd: %d %d\n", cfd, conn_sock);
 					}
 				}
 			}else{
+				printf("AA fd: %d %d\n", cfd, n);
 				future = tpool_apply(connmg->tesk_pool, exec, (void*)connmg->conn_table[cfd - SYSRESERVFD]);
 				tpool_future_destroy(future);
 			}
@@ -215,4 +245,20 @@ int db_active(disk_mg_s *dm, pool_mg_s *pm, conn_manager_s *connmg, char *port)
 	}
 
     return 0;
+}
+
+void executer(sys_args_s *sysargs, conn_info_s *conn_info, uint32_t command, char *buf, int msg_len)
+{
+	char reply[BUFSIZE], msg_type;
+	int msg_length;
+
+	memset(reply, 0, BUFSIZE);
+	msg_type = (IS_CONTENT_UP(command)) ? MSG_TYPE_CONTENT : MSG_TYPE_STATE;
+	command = __SKIP_CSBIT(command);
+
+	printf("%d, %d\n", command, msg_type);
+	// db_executer(command);
+
+	send(conn_info->fd, reply, strlen(reply), 0);
+	return;
 }
