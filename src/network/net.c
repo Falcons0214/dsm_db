@@ -108,7 +108,7 @@ void* exec(void *args)
 	int cmd_number;
 	if (!conn) return NULL;
 	
-	int cfd = conn->fd, __cmd, msg_value;
+	int cfd = conn->fd, msg_value;
 	switch (recv(cfd, &msg_type, MSG_TYPE_SIZE, 0)) {
 		case -1:
 			printf("recv error: %s\n", strerror(errno));
@@ -131,6 +131,7 @@ void* exec(void *args)
 		CINFO_CLOSE_UP(&(conn->flags));
 	else {
 		memcpy(&cmd_number, buf, sizeof(int));
+		// Skip first separater sign.
 		executer(&sysargs, conn, cmd_number, &buf[5], msg_value);
 	}
 
@@ -247,18 +248,59 @@ int db_active(disk_mg_s *dm, pool_mg_s *pm, conn_manager_s *connmg, char *port)
     return 0;
 }
 
+void __attr_type_parser(char *str)
+{
+	uint16_t len;
+	char buf[128];
+    for (int index = 0; str[index] != '\0';) {
+        memcpy(&len, &str[index], 2);
+        memset(buf, 0, 128);
+        memcpy(buf, &str[index + 4], len);
+        printf("--> attr name: %d %s\n", len, buf);
+        printf("--> attr type: %d\n", *((uint16_t*)&str[index + 2]));
+        index += (len + 4);
+    }
+}
+
+void __attr_value_parser(char *str)
+{
+	for (int i = 0, h = 0;; i ++, h ++) {
+		if (str[i] == '\0') {
+			printf("--> %s\n", &str[i - h + ((i == h) ? 0 : 1)]);
+			h = 0;
+			if (str[i + 1] == '\0')
+				break;
+		}
+	}
+}
+
 void executer(sys_args_s *sysargs, conn_info_s *conn_info, uint32_t command, char *buf, int msg_len)
 {
-	char reply[BUFSIZE], msg_type;
-	int msg_length;
+	char reply_type, *argv[2];
+	int i;
 
-	memset(reply, 0, BUFSIZE);
-	msg_type = (IS_CONTENT_UP(command)) ? MSG_TYPE_CONTENT : MSG_TYPE_STATE;
+	reply_type = (IS_CONTENT_UP(command)) ? MSG_TYPE_CONTENT : MSG_TYPE_STATE;
 	command = __SKIP_CSBIT(command);
 
-	printf("%d, %d\n", command, msg_type);
-	// db_executer(command);
+	argv[0] = buf;
+	argv[1] = NULL;
+	for (i = 0; i < msg_len; i ++) {
+		if (buf[i] == '|') {
+			buf[i] = '\0';
+			argv[1] = &buf[i + 1];
+			i += 2;
+			break;
+		}
+	}
+	// printf("%d, %d, %d, %d\n", command, reply_type, msg_len, i);
+	// printf("table name: %s, command: %d\n", argv[0], command);
 
-	send(conn_info->fd, reply, strlen(reply), 0);
+	// if (command == CMD_G_CREATE || command == CMD_I_CREATE)
+	// 	__attr_type_parser(argv[1]);
+	// else if (command == CMD_G_INSERT || command == CMD_I_INSERT)
+	//  	__attr_value_parser(argv[1]);
+
+	simple_db_executer(sysargs, conn_info, argv, reply_type, command, msg_len - i);
+	// send(conn_info->fd, reply, strlen(reply), 0);
 	return;
 }

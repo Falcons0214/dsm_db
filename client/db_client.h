@@ -21,11 +21,14 @@ typedef struct __reply __reply;
 #define BUFSIZE 1024
 #define LISTENQ 1024
 
+#define SEPARATE_SIGN '|'
 /*
  * Protocol Format:
- *  ----------------------------------------------------------------
- * | Message type (1 byte) | Message length (4 bytes) | Content ... |
- *  ----------------------------------------------------------------
+ *  --------------------------------------------------
+ * | Message type (1 byte) | Message length (4 bytes) |
+ *  --------------------------------------------------
+ * | Data (1) | Data (2) | Data ... |
+ *  --------------------------------
  */
 #define MSG_TYPE_SIZE 1
 #define MSG_LENGTH_SIZE 4
@@ -61,14 +64,14 @@ typedef struct __reply __reply;
  * G: for general table operaitons.
  * I: for Index table operations.
  */
-#define CMD_G_CREATE 0 // table name
+#define CMD_G_CREATE 0 // table name & (attr string & type)
 #define CMD_G_DELETE 1 // table name
 #define CMD_G_INSERT 2 // table name & record attributes value
 #define CMD_G_REMOVE 3 // table name & record number
 #define CMD_G_SEARCH 4 // table name & record number
 #define CMD_G_READ 10 // table name
 
-#define CMD_I_CREATE 5 // table name
+#define CMD_I_CREATE 5 // table name & (attr string & type)
 #define CMD_I_DELETE 6 // table name
 #define CMD_I_INSERT 7 // table name & record attribtues value
 #define CMD_I_REMOVE 8 // table name & record key
@@ -101,6 +104,29 @@ typedef struct __reply __reply;
 #define CONTENT_STATE_BIT 0x00010000
 #define IS_CONTENT_UP(x) (x & CONTENT_STATE_BIT)
 #define __SKIP_CSBIT(x) (x & ~CONTENT_STATE_BIT)
+
+/*
+ * Data Type:
+ */
+#define __int16 "int16"
+#define __int32 "int32"
+#define __int64 "int64"
+#define __str8 "str8"
+#define __str16 "str16"
+#define __str32 "str32"
+#define __str64 "str64"
+#define __str128 "str128"
+#define __str256 "str256"
+
+#define __INT16 1
+#define __INT32 2
+#define __INT64 3
+#define __STR8 4
+#define __STR16 5
+#define __STR32 6
+#define __STR64 7
+#define __STR128 8
+#define __STR256 9
 
 struct __reply
 {

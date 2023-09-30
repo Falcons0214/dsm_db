@@ -77,14 +77,14 @@ typedef struct conn_manager conn_manager_s;
  * I: for Index table operations.
  */
 
-#define CMD_G_CREATE 0 // table name
+#define CMD_G_CREATE 0 // table name & attr string & type
 #define CMD_G_DELETE 1 // table name
 #define CMD_G_INSERT 2 // table name & record attributes value
 #define CMD_G_REMOVE 3 // record number
 #define CMD_G_SEARCH 4 // record number
 #define CMD_G_READ 10 // table name
 
-#define CMD_I_CREATE 5 // table name
+#define CMD_I_CREATE 5 // table name  & attr string & type
 #define CMD_I_DELETE 6 // table name
 #define CMD_I_INSERT 7 // table name & record attribtues value
 #define CMD_I_REMOVE 8 // record key
@@ -94,6 +94,16 @@ typedef struct conn_manager conn_manager_s;
 #define CONTENT_STATE_BIT 0x00010000
 #define IS_CONTENT_UP(x) (x & CONTENT_STATE_BIT)
 #define __SKIP_CSBIT(x) (x & ~CONTENT_STATE_BIT)
+
+#define __INT16 1
+#define __INT32 2
+#define __INT64 3
+#define __STR8 4
+#define __STR16 5
+#define __STR32 6
+#define __STR64 7
+#define __STR128 8
+#define __STR256 9
 
 /*
  * MSG_TYPE_STATE state:

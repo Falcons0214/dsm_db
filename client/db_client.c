@@ -1,3 +1,6 @@
+#include <ctype.h>
+#include <stdbool.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -62,7 +65,6 @@ void dsm_close(ctoken_s *token)
     msg_value = TYPE_CONNECT_EXIT;
     __HEADER_FORMAT(buf, msg_type, msg_value)
     send(token->serv_fd, buf, MSG_TYPE_SIZE + MSG_LENGTH_SIZE, 0);
-    printf("##\n");
     close(token->serv_fd);
     free(token);
 }
@@ -96,6 +98,122 @@ int __table_cmd_checker(char *cmd)
     return -1;
 }
 
+bool __strcmp(char *a, char *b)
+{
+    for (int i = 0; b[i] != '\0'; i ++)
+        if (a[i] != b[i]) return false;
+    return true;
+}
+
+uint16_t __str_to_type(char *str)
+{
+    if (__strcmp(str, __int16))
+        return __INT16;
+    else if(__strcmp(str, __int32))
+        return __INT32;
+    else if(__strcmp(str, __int64))
+        return __INT64;
+    else if(__strcmp(str, __str8))
+        return __STR8;
+    else if(__strcmp(str, __str16))
+        return __STR16;
+    else if(__strcmp(str, __str32))
+        return __STR32;
+    else if(__strcmp(str, __str64))
+        return __STR64;
+    else if(__strcmp(str, __str128))
+        return __STR128;
+    else if(__strcmp(str, __str256))
+        return __STR256;
+    return 0;
+}
+
+char* __attr_type_formater(char *str, int *slen)
+{
+    uint16_t plen, len, str_len, i, h, index;
+    char *new = (char*)malloc(sizeof(char) * (strlen(str) + 64));
+    i = h = len = plen = str_len = index = 0;
+
+    for (;; i ++) {
+        if (isalpha(str[i]) || str[i] == '_' || isdigit(str[i]))
+            len ++;
+        if (str[i] == ' ') {
+            memcpy(&new[index], &len, 2);
+            memcpy(&new[index + 4], &str[h], len);
+            h += (len + 1);
+            plen = len;
+            len = 0;
+            printf("A: %s\n\n", &new[index + 4]);
+        }
+        if (str[i] == ',' || (str[i] == '\0')) {
+            // memcpy(&new[index + 2], &len, 2);
+            // memcpy(&new[index + 4 + plen], &str[h], len);
+            *((uint16_t*)&new[index + 2]) = __str_to_type(&str[h]);
+            // printf("B: %s\n\n", &new[index + 4 + plen]);
+            printf("B: %d\n", *((uint16_t*)&new[index + 2]));
+            index += (plen + 4);
+            h += (len + 1);
+            len = 0;
+            if (str[i] == '\0') break;
+        }
+    }
+
+    free(str);
+    *slen = index;
+    return new;
+}
+
+void __attr_type_parser(char *str)
+{
+    for (int index = 0; str[index] != '\0';) {
+        uint16_t len, plen;
+        char buf[128];
+        memcpy(&len, &str[index], 2);
+        memset(buf, 0, 128);
+        memcpy(buf, &str[index + 4], len);
+        printf("--> %d %s\n", len, buf);
+        plen = len;
+
+        memcpy(&len, &str[index + 2], 2);
+        memset(buf, 0, 128);
+        memcpy(buf, &str[index + 4 + plen], len);        
+        printf("--> %d %s\n", len, buf);
+        index += (plen + len + 4);
+    }
+}
+
+char* __attr_value_formater(char *str, int *slen)
+{
+    char *new = (char*)malloc(sizeof(char) * strlen(str));
+    memset(new, 0, strlen(str));
+    uint16_t i, index, len;
+
+    for (i = index = len = 0;; i ++) {
+        if (isalpha(str[i]) || str[i] == '_' || isdigit(str[i]))
+            len ++;
+        if (str[i] == ',' || str[i] == '\0') {
+            memcpy(&new[index], &str[i - len], len);
+            printf("--> %s\n", &new[index]);
+            new[index + len] = '\0';
+            index += (len + 1);
+            len = 0;
+            if (str[i] == '\0') break;
+        }
+    }
+
+    free(str);
+    *slen = index;
+    return new;
+}
+
+char* __entry_key_formater(char *str) 
+{
+    uint32_t *key = malloc(sizeof(uint32_t));
+    *key = atoi(str);
+    free(str);
+    return (char*)key;   
+}
+
 /*
  * Arg 1: operation name
  * Arg 2: table name
@@ -104,10 +222,12 @@ int __table_cmd_checker(char *cmd)
 __reply* dsm_table_cmd(ctoken_s *token, int args, char **argv)
 {
     __reply *reply = (__reply*)malloc(sizeof(__reply));
-    int cmd = __table_cmd_checker(argv[0]), msg_length;
+    int cmd = __table_cmd_checker(argv[0]), cmd2, msg_length, tmp;
     char buf[BUFSIZE], msg_type, *cur;
+    cmd2 = __SKIP_CSBIT(cmd);
 
-    if (__SKIP_CSBIT(cmd) == -1) {
+    msg_length = tmp = 0;
+    if (cmd2 == -1) {
         // command is invalid.
         reply->type = MSG_TYPE_STATE;
         reply->content = NULL;
@@ -118,18 +238,37 @@ __reply* dsm_table_cmd(ctoken_s *token, int args, char **argv)
     msg_type = MSG_TYPE_CMD;
     memset(buf, 0, BUFSIZE);
     cur = &buf[5];
+
     memcpy(cur, &cmd, sizeof(int));
-    cur = cur + 4;
-    for (int i = 1; i < args; i ++)
-        sprintf(&cur[strlen(cur)], "/%s", argv[i]);
-    msg_length = strlen(&buf[9]);
+    cur += 4;
+
+    sprintf(cur, "%c%s", SEPARATE_SIGN, argv[1]);
+    msg_length += strlen(cur);
+    cur += msg_length;
+
+    if (args == 3) {
+        sprintf(cur, "%c", SEPARATE_SIGN);
+        cur += 1;
+        msg_length ++;
+        if (cmd2 == CMD_G_CREATE || cmd2 == CMD_I_CREATE)
+            argv[2] = __attr_type_formater(argv[2], &tmp);
+        else if (cmd2 == CMD_G_INSERT || cmd2 == CMD_I_INSERT)
+            argv[2] = __attr_value_formater(argv[2], &tmp);
+        else if (cmd2 == CMD_G_REMOVE || cmd2 == CMD_I_REMOVE || \
+            cmd2 == CMD_G_SEARCH || cmd2 == CMD_I_SEARCH) {
+            argv[2] = __entry_key_formater(argv[2]);
+            tmp = 4;
+        }
+        memcpy(cur, argv[2], tmp);
+    }
+    // printf("key: %d, cmd: %d\n", *((uint32_t*)argv[2]), cmd2);
+    msg_length += tmp;
     memcpy(buf, &msg_type, MSG_TYPE_SIZE);
     memcpy(&buf[MSG_TYPE_SIZE], &msg_length, MSG_LENGTH_SIZE);
-
-    printf("%s\n",&buf[9]);
-
+    
+    // __attr_type_parser(argv[2]);
     send(token->serv_fd, buf, msg_length + 9, 0);
-
+    
     memset(buf, 0, BUFSIZE);
     recv(token->serv_fd, &msg_type, MSG_TYPE_SIZE, 0);
     recv(token->serv_fd, &msg_length, MSG_LENGTH_SIZE, 0);
@@ -139,6 +278,6 @@ __reply* dsm_table_cmd(ctoken_s *token, int args, char **argv)
     reply->type = msg_type;
     reply->content = (msg_type == MSG_TYPE_CONTENT) ? buf : NULL;
     reply->len = msg_length;
+    free(argv[2]);
     return reply;
 }
-

@@ -30,10 +30,12 @@
 
 /*
  * General table info page layout:
+ * 3 -> 3 + `ATTRSNUM` record each type size.
  */
 #define ATTRSNUM 0
 #define RECORDNUM 1
 #define PRIKEYIDEN 2
+#define ATTR_SIZE_START 3
 
 /*
  * Index table page layout:

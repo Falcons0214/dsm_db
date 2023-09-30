@@ -19,13 +19,16 @@ INDEX = ${SRC}/index
 CMD = ${SRC}/cmd
 MUNIT = ./munit
 
-%.o: %.c
+%.o: %.c %.h
 	${CC} -o $@ -c $< ${CFLAGS}
 
 test_template = ${CC} -o ${TEST}/$@ $^ ${CFLAGS}
 
 net_test:   ${NET}/net.o ${COMMON}/threadpool.o \
 			${CMD}/cmd.o ${NET}/wrap.o \
+			${ERROR}/error.o ${COMMON}/avl.o ${COMMON}/hash_table.o \
+	 	 	${DISK}/page.o ${DISK}/disk.o ${POOL}/pool.o \
+		  	${INTER}/interface.o ${INDEX}/b_page.o ${LATCH}/isdlock.o \
 			${DBTEST}/net_test.c
 			${test_template}
 
@@ -39,7 +42,7 @@ pagetest: 	${DISK}/page.o ${TEST}/pagetest.c
 
 pooltest: ${ERROR}/error.o ${COMMON}/avl.o ${COMMON}/hash_table.o \
 	 	  ${DISK}/page.o ${DISK}/disk.o ${POOL}/pool.o \
-		  ${INTER}/interface.o ${INDEX}/b_page.o \
+		  ${INTER}/interface.o ${INDEX}/b_page.o ${LATCH}/isdlock.o \
 		  ${TEST}/pooltest.c
 		  ${test_template}
 
@@ -51,6 +54,12 @@ avltest: 	${COMMON}/avl.o ${TEST}/avltest.c
 
 blink: 	${INDEX}/b_page.o ${TEST}/b_link.c
 		${test_template}
+
+isd: ${LATCH}/isdlock.o ${TEST}/isd_test.c
+	 ${test_template}
+
+clitest: ./client/db_client.o ${DBTEST}/client_test.c
+		 ${test_template}
 
 tt:
 	rm ./tmp/db.dump

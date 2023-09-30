@@ -155,8 +155,10 @@ bool db_create_table(pool_mg_s *pm, disk_mg_s*dm, char *table_name, char **attrs
     // init some table meta data.
     p_entry_insert(table_info_block->page, (char*)&attrs_num, sizeof(int));
     p_entry_insert(table_info_block->page, (char*)&tmp, sizeof(int));
-    tmp = 0; 
+    // tmp = 0;
     p_entry_insert(table_info_block->page, (char*)&tmp, sizeof(int));
+    for (int i = 0; i < attrs_num; i ++)
+        p_entry_insert(table_info_block->page, (char*)&types[i], 4);
     DIRTYSET(&table_info_block->flags);
 
     /*
@@ -325,19 +327,26 @@ void db_1_tread(pool_mg_s *pm, disk_mg_s *dm, int fd, char *tname, char **attrs,
 /*
  * !! No-thread safe for delete occur on same table.
  */
-bool db_1_tinsert(pool_mg_s *pm, disk_mg_s *dm, char *tname, char **attrs, int *types)
+bool db_1_tinsert(pool_mg_s *pm, disk_mg_s *dm, char *tname, char **attrs)
 {
     block_s *root_table = db_1_topen(pm, dm, tname, GENERAL);
-    block_s *attr_tblock, *prev_block, *data_block;
+    block_s *attr_tblock, *prev_block, *data_block, *info_block;
     char buf6[ATTRTABLEENTRYSIZE], *tmp;
-    int brk, attr_table_records;
+    int brk, attr_table_records, attrs_num, *types;
     uint16_t remain;
 
     if (!root_table) {
         // table open failed.
     }
-    
-    for (int i = 1, entry = 0, h; entry < (root_table->page->record_num - 1); i ++) {
+
+    tmp = p_entry_read_by_index(root_table->page, 0);
+    info_block = mp_page_open(pm, dm, FROMATTRGETPID(tmp));
+    attrs_num = root_table->page->record_num - 1;
+    types = (int*)malloc(sizeof(int) * attrs_num);
+    for (int i = 0; i < attrs_num; i ++)
+        types[i] = *((int*)p_entry_read_by_index(info_block->page, ATTR_SIZE_START + i));
+
+    for (int i = 1, entry = 0; entry < attrs_num; i ++) {
         tmp = p_entry_read_by_index(root_table->page, i);
         if (!tmp) continue;
 
@@ -345,10 +354,11 @@ bool db_1_tinsert(pool_mg_s *pm, disk_mg_s *dm, char *tname, char **attrs, int *
         attr_tblock = mp_page_open(pm, dm, FROMATTRGETPID(tmp));
         if (!attr_tblock) {
             // attribute table open failed.
+            free(types);
             return false;
         }
         brk = 1;
-        h = 0;
+        // h = 0;
         while (brk) {
             // for (; h < attr_tblock->page->record_num; h ++) {
             //     tmp = p_entry_read_by_index(attr_tblock->page, h);
@@ -422,8 +432,10 @@ bool db_1_tinsert(pool_mg_s *pm, disk_mg_s *dm, char *tname, char **attrs, int *
 
     if (!table_record_update(pm, dm, root_table, 1)) {
         // record number update failed.
+        free(types);
         return false;
     }
+    free(types);
     return true;
 }
 
@@ -661,7 +673,7 @@ static char* __get_title(int x)
     return BR;
 }
 
-bool db_1_icreate(pool_mg_s *pm, disk_mg_s *dm, char *tname, char **attrs, int attrs_num, int *types)
+bool db_1_icreate(pool_mg_s *pm, disk_mg_s *dm, char *tname, char **attrs, int attrs_num, uint32_t *types)
 {
     block_s *pdir = search_table_from_pdir(pm, dm, tname, NULL);
     if (pdir) {
@@ -958,7 +970,7 @@ char* db_1_isearch(pool_mg_s *pm, disk_mg_s *dm, char *tname, int key)
     return tmp;
 } 
 
-void db_1_iremove(pool_mg_s *pm, disk_mg_s *dm, char *tname, int key)
+bool db_1_iremove(pool_mg_s *pm, disk_mg_s *dm, char *tname, int key)
 {
     block_s *blink_table, *cur, *A, *B;
     uint32_t page_id, replace, replaced, b_replace, b_replaced, remove_key, remove_max;
@@ -980,14 +992,14 @@ void db_1_iremove(pool_mg_s *pm, disk_mg_s *dm, char *tname, int key)
         _stack[stack_index ++] = GET_BLINK_PID(cur);
         page_id = blink_pivot_scan(TO_BLINK_PIVOT(cur), key);
         if (page_id == PAGEIDNULL) {
-            return;
+            return false;
         }
         cur = mp_page_open(pm, dm, page_id);
     }
 
     stateA = stateB = replace = replaced = b_replace = b_replaced = remove_key = remove_max = diff = re = 0;
     if (blink_entry_remove_from_leaf(TO_BLINK_LEAF(cur), key, &stateA) == BLL_REMOVE_UNEXIST)
-        return;
+        return false;
     else{
         if (stateA) {
             if (__REM(stateA)) {
@@ -1227,15 +1239,15 @@ BLINK_SKIP_PIVOT:
     p_entry_update_by_index(blink_table->page, buf, B_LINK_RECORDNUM);
 
     isd_d_release((isdlock_s*)blink_table->tmp);
-    return;
+    return true;
 }
 
-void db_1_idelete(pool_mg_s *pm, disk_mg_s *dm, char *tname)
+bool db_1_idelete(pool_mg_s *pm, disk_mg_s *dm, char *tname)
 {
     block_s *blink_table, *cur;
     uint32_t blink_tid, leftest_pid, next;
     uint16_t type;
-    char *tmp, buf[RTABLEENYRTSIZE], brk;
+    char *tmp, brk;
     
     if (!remove_table_from_pdir(pm, dm, tname, &blink_tid)) {
 
@@ -1283,7 +1295,7 @@ void db_1_idelete(pool_mg_s *pm, disk_mg_s *dm, char *tname)
     }
 
     mp_page_mdelete(pm, dm, blink_table, GENERAL);
-    return;
+    return true;
 }
 
 char* db_1_ischema(pool_mg_s *pm, disk_mg_s *dm, int fd, char *tname)
