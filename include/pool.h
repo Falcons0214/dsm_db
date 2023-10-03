@@ -131,7 +131,7 @@ void mp_pool_close(pool_mg_s*, disk_mg_s*);
 
 block_s* mp_page_create(pool_mg_s*, disk_mg_s*, uint16_t, uint16_t);
 block_s** mp_pages_create(pool_mg_s*, disk_mg_s*, int);
-block_s* mp_page_open(pool_mg_s*, disk_mg_s*, uint32_t);
+block_s* mp_page_open(pool_mg_s*, disk_mg_s*, uint32_t, uint32_t);
 void mp_page_close(pool_mg_s*, disk_mg_s*, block_s*, bool);
 void mp_page_mdelete(pool_mg_s*, disk_mg_s*, block_s*, char);
 void mp_page_ddelete(pool_mg_s*, disk_mg_s*, uint32_t, char);

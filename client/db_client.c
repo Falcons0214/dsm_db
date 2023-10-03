@@ -143,14 +143,14 @@ char* __attr_type_formater(char *str, int *slen)
             h += (len + 1);
             plen = len;
             len = 0;
-            printf("A: %s\n\n", &new[index + 4]);
+            // printf("A: %s\n\n", &new[index + 4]);
         }
         if (str[i] == ',' || (str[i] == '\0')) {
             // memcpy(&new[index + 2], &len, 2);
             // memcpy(&new[index + 4 + plen], &str[h], len);
             *((uint16_t*)&new[index + 2]) = __str_to_type(&str[h]);
             // printf("B: %s\n\n", &new[index + 4 + plen]);
-            printf("B: %d\n", *((uint16_t*)&new[index + 2]));
+            // printf("B: %d\n", *((uint16_t*)&new[index + 2]));
             index += (plen + 4);
             h += (len + 1);
             len = 0;
@@ -158,7 +158,7 @@ char* __attr_type_formater(char *str, int *slen)
         }
     }
 
-    free(str);
+    // free(str);
     *slen = index;
     return new;
 }
@@ -201,7 +201,7 @@ char* __attr_value_formater(char *str, int *slen)
         }
     }
 
-    free(str);
+    // free(str);
     *slen = index;
     return new;
 }
@@ -210,7 +210,7 @@ char* __entry_key_formater(char *str)
 {
     uint32_t *key = malloc(sizeof(uint32_t));
     *key = atoi(str);
-    free(str);
+    // free(str);
     return (char*)key;   
 }
 
@@ -269,15 +269,14 @@ __reply* dsm_table_cmd(ctoken_s *token, int args, char **argv)
     // __attr_type_parser(argv[2]);
     send(token->serv_fd, buf, msg_length + 9, 0);
     
-    memset(buf, 0, BUFSIZE);
     recv(token->serv_fd, &msg_type, MSG_TYPE_SIZE, 0);
     recv(token->serv_fd, &msg_length, MSG_LENGTH_SIZE, 0);
-    if (msg_type == MSG_TYPE_CONTENT)
-        recv(token->serv_fd, buf, msg_length, 0);
+    if (msg_type == MSG_TYPE_CONTENT) {
+        // recv(token->serv_fd, buf, msg_length, 0);
+    }
     
     reply->type = msg_type;
     reply->content = (msg_type == MSG_TYPE_CONTENT) ? buf : NULL;
     reply->len = msg_length;
-    free(argv[2]);
     return reply;
 }

@@ -32,7 +32,7 @@ bool insert_table_in_pdir(pool_mg_s *pm, disk_mg_s *dm, char *name, uint32_t pag
      * prev_page_dir_tail may modify by other thread.
      */
     uint32_t prev_page_dir_tail = pm->page_dir_tail;
-    block_s *page_dir = mp_page_open(pm, dm, pm->page_dir_tail);
+    block_s *page_dir = mp_page_open(pm, dm, pm->page_dir_tail, PAGE_GTYPE_BIT);
 
     /*
      * If page_dir_tail is previous one we need open again, 
@@ -41,7 +41,7 @@ bool insert_table_in_pdir(pool_mg_s *pm, disk_mg_s *dm, char *name, uint32_t pag
     mp_require_page_wlock(page_dir);
     if (prev_page_dir_tail != pm->page_dir_tail) {
         mp_release_page_wlock(page_dir);
-        page_dir = mp_page_open(pm, dm, pm->page_dir_tail);
+        page_dir = mp_page_open(pm, dm, pm->page_dir_tail, PAGE_GTYPE_BIT);
         mp_require_page_wlock(page_dir);
     }
 
@@ -94,7 +94,7 @@ block_s* search_table_from_pdir(pool_mg_s *pm, disk_mg_s *dm, char *name, uint32
         }
         mp_release_page_rlock(cur_page_dir);
         
-        cur_page_dir = mp_page_open(pm, dm, cur_page_dir->page->next_page_id);
+        cur_page_dir = mp_page_open(pm, dm, cur_page_dir->page->next_page_id, PAGE_GTYPE_BIT);
         if (!cur_page_dir) {
             // err handler
         }
@@ -127,7 +127,7 @@ void db_close_table(pool_mg_s *pm, disk_mg_s *dm, uint32_t tpage_id)
     
 }
 
-bool db_create_table(pool_mg_s *pm, disk_mg_s*dm, char *table_name, char **attrs, int attrs_num, int *types)
+bool db_create_table(pool_mg_s *pm, disk_mg_s*dm, char *table_name, char **attrs, int attrs_num, uint32_t *types)
 {
     block_s *new_table_block = mp_page_create(pm, dm, TABLEPAGE, RTABLEENYRTSIZE);
     block_s *attr_block, *data_block, *table_info_block;
@@ -148,6 +148,7 @@ bool db_create_table(pool_mg_s *pm, disk_mg_s*dm, char *table_name, char **attrs
     if (table_info_block) {
         // err handler, table info create error.
     }
+    memset(buf, 0, RTABLEENYRTSIZE);
     memcpy(buf, TABLEINFOATTR, strlen(TABLEINFOATTR));
     memcpy(&buf[ATTRSIZE], &table_info_block->page->page_id, 4);
     p_entry_insert(new_table_block->page, buf, RTABLEENYRTSIZE);
@@ -199,7 +200,7 @@ static bool table_record_update(pool_mg_s *pm, disk_mg_s *dm, block_s *root_tabl
     int record_num;
 
     tmp = p_entry_read_by_index(root_table->page, 0);
-    info_block = mp_page_open(pm, dm, FROMATTRGETPID(tmp));
+    info_block = mp_page_open(pm, dm, FROMATTRGETPID(tmp), PAGE_GTYPE_BIT);
     if (!info_block) {
         // info block open failed.
         return false;
@@ -225,7 +226,7 @@ block_s* db_1_topen(pool_mg_s *pm, disk_mg_s *dm, char *tname, char type)
     if (!tblock) {
         if (!search_table_from_pdir(pm, dm, tname, &table_pid))
             return NULL;
-        tblock = mp_page_open(pm, dm, table_pid);
+        tblock = mp_page_open(pm, dm, table_pid, PAGE_GTYPE_BIT);
         if (!tblock) {
             // err handler, for table page open failed.
             return NULL;
@@ -240,7 +241,7 @@ block_s* db_1_topen(pool_mg_s *pm, disk_mg_s *dm, char *tname, char type)
     return tblock;
 }
 
-bool db_1_tcreate(pool_mg_s *pm, disk_mg_s *dm, char *tname, char **attrs, int attrs_num, int *types)
+bool db_1_tcreate(pool_mg_s *pm, disk_mg_s *dm, char *tname, char **attrs, int attrs_num, uint32_t *types)
 {
     block_s *pdir = search_table_from_pdir(pm, dm, tname, NULL);
 
@@ -272,7 +273,7 @@ bool db_1_tdelete(pool_mg_s *pm, disk_mg_s *dm, char *tname)
     }
 
     root_table = djb2_search(pm->hash_table, tname);
-    if (!root_table && !(root_table = mp_page_open(pm, dm, remove_tid))) {
+    if (!root_table && !(root_table = mp_page_open(pm, dm, remove_tid, PAGE_GTYPE_BIT))) {
         // err handler, table open failed.
         return false;
     }
@@ -292,7 +293,7 @@ bool db_1_tdelete(pool_mg_s *pm, disk_mg_s *dm, char *tname)
              * Attribute table pages we need load in memory because they record
              * attributes value pages id.
              */
-            attr_block = mp_page_open(pm, dm, attr_pid);
+            attr_block = mp_page_open(pm, dm, attr_pid, PAGE_GTYPE_BIT);
             while (1) {
                 for (int h = 0, entry2 = 0; entry2 < attr_block->page->record_num ; h ++) {
                     tmp = p_entry_read_by_index(attr_block->page, h);
@@ -303,7 +304,7 @@ bool db_1_tdelete(pool_mg_s *pm, disk_mg_s *dm, char *tname)
                 }
                 mp_page_ddelete(pm, dm, attr_block->page->page_id, GENERAL);
                 if (attr_block->page->next_page_id != PAGEIDNULL) {
-                    attr_block = mp_page_open(pm, dm, attr_block->page->next_page_id);
+                    attr_block = mp_page_open(pm, dm, attr_block->page->next_page_id, PAGE_GTYPE_BIT);
                     if (attr_block) {
                         // err handler, attribute table page open failed. 
                     }
@@ -340,7 +341,7 @@ bool db_1_tinsert(pool_mg_s *pm, disk_mg_s *dm, char *tname, char **attrs)
     }
 
     tmp = p_entry_read_by_index(root_table->page, 0);
-    info_block = mp_page_open(pm, dm, FROMATTRGETPID(tmp));
+    info_block = mp_page_open(pm, dm, FROMATTRGETPID(tmp), PAGE_GTYPE_BIT);
     attrs_num = root_table->page->record_num - 1;
     types = (int*)malloc(sizeof(int) * attrs_num);
     for (int i = 0; i < attrs_num; i ++)
@@ -351,7 +352,7 @@ bool db_1_tinsert(pool_mg_s *pm, disk_mg_s *dm, char *tname, char **attrs)
         if (!tmp) continue;
 
         entry ++;
-        attr_tblock = mp_page_open(pm, dm, FROMATTRGETPID(tmp));
+        attr_tblock = mp_page_open(pm, dm, FROMATTRGETPID(tmp), PAGE_GTYPE_BIT);
         if (!attr_tblock) {
             // attribute table open failed.
             free(types);
@@ -395,7 +396,7 @@ bool db_1_tinsert(pool_mg_s *pm, disk_mg_s *dm, char *tname, char **attrs)
                     p_entry_update_by_index(attr_tblock->page, buf6, attr_table_records - 1);
                     DIRTYSET(&attr_tblock->flags);
 
-                    data_block = mp_page_open(pm, dm, *((int*)tmp));
+                    data_block = mp_page_open(pm, dm, *((int*)tmp), PAGE_GTYPE_BIT);
                     p_entry_insert(data_block->page, attrs[i-1], types[i-1]);
                     DIRTYSET(&data_block->flags);
                 }
@@ -455,7 +456,7 @@ char* __do_rep(pool_mg_s *pm, disk_mg_s *dm, block_s *attr_tblock)
 
     while (cur->page->next_page_id != PAGEIDNULL) {
         prev = cur;
-        cur = mp_page_open(pm, dm, cur->page->next_page_id);
+        cur = mp_page_open(pm, dm, cur->page->next_page_id, PAGE_GTYPE_BIT);
     }
 
     for (int i = 0, entry = 0; entry < cur->page->record_num; i ++) {
@@ -465,7 +466,7 @@ char* __do_rep(pool_mg_s *pm, disk_mg_s *dm, block_s *attr_tblock)
         page_index = i;
     }
 
-    data = mp_page_open(pm, dm, *((int*)tmp));
+    data = mp_page_open(pm, dm, *((int*)tmp), PAGE_GTYPE_BIT);
     memcpy(&remain, &tmp[4], sizeof(uint16_t));
 
     for (int i = 0, entry = 0; entry < data->page->record_num; i ++) {
@@ -520,7 +521,7 @@ bool db_1_tremove_by_index(pool_mg_s *pm, disk_mg_s *dm, char *tname, int record
     }
 
     tmp = p_entry_read_by_index(root_table->page, 0);
-    info_block = mp_page_open(pm, dm, FROMATTRGETPID(tmp));
+    info_block = mp_page_open(pm, dm, FROMATTRGETPID(tmp), PAGE_GTYPE_BIT);
     if (!info_block) {
         return false;
     }
@@ -530,7 +531,7 @@ bool db_1_tremove_by_index(pool_mg_s *pm, disk_mg_s *dm, char *tname, int record
     for (int i = 1, entry = 1; entry < root_table->page->record_num; i ++) {
         tmp = p_entry_read_by_index(root_table->page, i);
         if (!tmp) continue;
-        attr_tblock = mp_page_open(pm, dm, FROMATTRGETPID(tmp));
+        attr_tblock = mp_page_open(pm, dm, FROMATTRGETPID(tmp), PAGE_GTYPE_BIT);
         if (!attr_tblock) {
             // attribute table open failed.
             return false;
@@ -553,7 +554,7 @@ bool db_1_tremove_by_index(pool_mg_s *pm, disk_mg_s *dm, char *tname, int record
                     index += records;
                     continue;
                 }else{
-                    data_block = mp_page_open(pm, dm, *((int*)tmp));
+                    data_block = mp_page_open(pm, dm, *((int*)tmp), PAGE_GTYPE_BIT);
                     if (!data_block) {
                         // data page open failed.
                         return false;
@@ -594,7 +595,7 @@ bool db_1_tremove_by_index(pool_mg_s *pm, disk_mg_s *dm, char *tname, int record
                     // record index is not exist.
                     return false;
                 }else{
-                    attr_tblock = mp_page_open(pm, dm, attr_tblock->page->next_page_id);
+                    attr_tblock = mp_page_open(pm, dm, attr_tblock->page->next_page_id, PAGE_GTYPE_BIT);
                     if (!attr_tblock) {
                         // attribute table page open failed.
                         return false;
@@ -609,6 +610,13 @@ bool db_1_tremove_by_index(pool_mg_s *pm, disk_mg_s *dm, char *tname, int record
     }
 
     return true;
+}
+
+char* db_1_tsearch(pool_mg_s *pm, disk_mg_s *dm, char *tname, int num)
+{
+    
+
+    return NULL;
 }
 
 char* db_1_tschema(pool_mg_s *pm, disk_mg_s *dm, char *tname)
@@ -750,7 +758,7 @@ BLINKMOVERIGHTAGAIN:
                GET_PIVOT_UPBOUND(cur) : GET_LEAF_UPBOUND(cur);
 
     if (upbound != PAGEIDNULL && key > upbound) {
-        next = mp_page_open(pm, dm, GET_BLINK_NPID(cur));
+        next = mp_page_open(pm, dm, GET_BLINK_NPID(cur), PAGE_ITYPE_BIT);
         if (!next) {
             mp_release_page_wlock(cur);    
             return NULL;
@@ -783,7 +791,7 @@ bool db_1_iinsert(pool_mg_s *pm, disk_mg_s *dm, char *tname, char *entry, uint32
     }
 
     tmp = p_entry_read_by_index(blink_table->page, B_LINK_PID);
-    cur = mp_page_open(pm, dm, FROMATTRGETPID(tmp));
+    cur = mp_page_open(pm, dm, FROMATTRGETPID(tmp), PAGE_ITYPE_BIT);
     if (!cur) {
         // err handler, index root open failed.
     }
@@ -799,7 +807,7 @@ bool db_1_iinsert(pool_mg_s *pm, disk_mg_s *dm, char *tname, char *entry, uint32
         if (page_id == PAGEIDNULL) {
             return false;
         }
-        cur = mp_page_open(pm, dm, page_id);
+        cur = mp_page_open(pm, dm, page_id, PAGE_ITYPE_BIT);
     }
 
     /*
@@ -854,7 +862,7 @@ BLINK_INSERT_TO_PREV_LEVEL:
         }
 
         if (GET_BLINK_NPID(cur) != PAGEIDNULL) {
-            A = mp_page_open(pm, dm, GET_BLINK_NPID(cur));
+            A = mp_page_open(pm, dm, GET_BLINK_NPID(cur), PAGE_ITYPE_BIT);
             if (!A) {
                 // error handler.
             }
@@ -899,7 +907,7 @@ BLINK_INSERT_TO_PREV_LEVEL:
                     SET_BLINK_PAR(old, _stack[stack_index]);
                 page_id = _stack[stack_index];
             }
-            cur = mp_page_open(pm, dm, page_id);
+            cur = mp_page_open(pm, dm, page_id, PAGE_ITYPE_BIT);
             mp_require_page_wlock(cur);
 
             cur = __move_right(pm, dm, cur, tmp_key);
@@ -938,7 +946,7 @@ char* db_1_isearch(pool_mg_s *pm, disk_mg_s *dm, char *tname, int key)
     isd_is_require((isdlock_s*)blink_table->tmp);
 
     tmp = p_entry_read_by_index(blink_table->page, B_LINK_PID);
-    cur = mp_page_open(pm, dm, FROMATTRGETPID(tmp));
+    cur = mp_page_open(pm, dm, FROMATTRGETPID(tmp), PAGE_ITYPE_BIT);
     if (!cur) {
         // err handler, index root open failed.
         return NULL;
@@ -949,13 +957,13 @@ char* db_1_isearch(pool_mg_s *pm, disk_mg_s *dm, char *tname, int key)
         if (page_id == PAGEIDNULL) {
             return NULL;
         }
-        cur = mp_page_open(pm, dm, page_id);
+        cur = mp_page_open(pm, dm, page_id, PAGE_ITYPE_BIT);
     }
 
     while (1) {
         upbound = GET_LEAF_UPBOUND(cur);
         if (upbound != PAGEIDNULL && key > upbound) {
-            cur = mp_page_open(pm, dm, GET_BLINK_NPID(cur));
+            cur = mp_page_open(pm, dm, GET_BLINK_NPID(cur), PAGE_ITYPE_BIT);
             if (!cur) {
                 return NULL;
             }
@@ -983,7 +991,7 @@ bool db_1_iremove(pool_mg_s *pm, disk_mg_s *dm, char *tname, int key)
     }
 
     tmp = p_entry_read_by_index(blink_table->page, B_LINK_PID);
-    cur = mp_page_open(pm, dm, FROMATTRGETPID(tmp));
+    cur = mp_page_open(pm, dm, FROMATTRGETPID(tmp), PAGE_ITYPE_BIT);
 
     // It should lock tree root from here ...
     isd_d_require((isdlock_s*)blink_table->tmp);
@@ -994,7 +1002,7 @@ bool db_1_iremove(pool_mg_s *pm, disk_mg_s *dm, char *tname, int key)
         if (page_id == PAGEIDNULL) {
             return false;
         }
-        cur = mp_page_open(pm, dm, page_id);
+        cur = mp_page_open(pm, dm, page_id, PAGE_ITYPE_BIT);
     }
 
     stateA = stateB = replace = replaced = b_replace = b_replaced = remove_key = remove_max = diff = re = 0;
@@ -1004,7 +1012,7 @@ bool db_1_iremove(pool_mg_s *pm, disk_mg_s *dm, char *tname, int key)
         if (stateA) {
             if (__REM(stateA)) {
                 A = mp_page_open(pm, dm, (GET_BLINK_BPID(cur) != PAGEIDNULL) ? \
-                                          GET_BLINK_BPID(cur) : GET_BLINK_NPID(cur));
+                                          GET_BLINK_BPID(cur) : GET_BLINK_NPID(cur), PAGE_ITYPE_BIT);
                 if (!A) {
                     // error handler.
                 }
@@ -1040,7 +1048,7 @@ bool db_1_iremove(pool_mg_s *pm, disk_mg_s *dm, char *tname, int key)
                         /*
                          * [Node cur] - [Node B]
                          */
-                        B = mp_page_open(pm, dm, GET_BLINK_NPID(cur));
+                        B = mp_page_open(pm, dm, GET_BLINK_NPID(cur), PAGE_ITYPE_BIT);
                         if (!B) {
                             // error handler.
                         }
@@ -1059,7 +1067,7 @@ bool db_1_iremove(pool_mg_s *pm, disk_mg_s *dm, char *tname, int key)
                         blink_merge_leaf(TO_BLINK_LEAF(B), TO_BLINK_LEAF(cur));
                         SET_BLINK_NPID(cur, GET_BLINK_NPID(B));
                         if (GET_BLINK_NPID(B) != PAGEIDNULL) {
-                            A = mp_page_open(pm, dm, GET_BLINK_NPID(B));
+                            A = mp_page_open(pm, dm, GET_BLINK_NPID(B), PAGE_ITYPE_BIT);
                             if (!A) {
                                 // error handler.
                             }
@@ -1110,7 +1118,7 @@ BLINK_TO_PREV_LEVEL:
      */ 
     if (re == BLP_RESERV_VALUE) mp_page_ddelete(pm, dm, GET_BLINK_PID(cur), BLINK);
     
-    cur = mp_page_open(pm, dm, _stack[stack_index]);
+    cur = mp_page_open(pm, dm, _stack[stack_index], PAGE_ITYPE_BIT);
 
     if (__REP(stateB)) {
         if (blink_entry_update_pivot_key(TO_BLINK_PIVOT(cur), replace, replaced))
@@ -1127,7 +1135,7 @@ BLINK_TO_PREV_LEVEL:
              * and then update it until we find the key is exist in the pivot node, if
              * not update its upper bound.
              */
-            A = mp_page_open(pm, dm, GET_BLINK_BPID(cur));
+            A = mp_page_open(pm, dm, GET_BLINK_BPID(cur), PAGE_ITYPE_BIT);
             SET_PIVOT_UPBOUND(A, b_replace);
         }else{
             /*
@@ -1156,7 +1164,7 @@ BLINK_TO_PREV_LEVEL:
         }
 
         A = mp_page_open(pm, dm, (GET_BLINK_BPID(cur) != PAGEIDNULL) ? \
-                                GET_BLINK_BPID(cur) : GET_BLINK_NPID(cur));
+                                GET_BLINK_BPID(cur) : GET_BLINK_NPID(cur), PAGE_ITYPE_BIT);
         if (!A) {
             // error handler.
         }
@@ -1199,7 +1207,7 @@ BLINK_TO_PREV_LEVEL:
                 DIRTYSET(&cur->flags);
                 DIRTYSET(&A->flags);
             }else{
-                B = (GET_BLINK_NPID(cur) == PAGEIDNULL) ? NULL : mp_page_open(pm, dm, GET_BLINK_NPID(cur));
+                B = (GET_BLINK_NPID(cur) == PAGEIDNULL) ? NULL : mp_page_open(pm, dm, GET_BLINK_NPID(cur), PAGE_ITYPE_BIT);
 
                 if (GET_BLINK_BPID(cur) == PAGEIDNULL) {
                     /*
@@ -1253,9 +1261,9 @@ bool db_1_idelete(pool_mg_s *pm, disk_mg_s *dm, char *tname)
 
     }
 
-    blink_table = mp_page_open(pm, dm, blink_tid);
+    blink_table = mp_page_open(pm, dm, blink_tid, PAGE_ITYPE_BIT);
     tmp = p_entry_read_by_index(blink_table->page, B_LINK_PID);
-    cur = mp_page_open(pm, dm, FROMATTRGETPID(tmp));
+    cur = mp_page_open(pm, dm, FROMATTRGETPID(tmp), PAGE_ITYPE_BIT);
     if (!cur) {
         // err handler, index root open failed.
     }
@@ -1280,7 +1288,7 @@ bool db_1_idelete(pool_mg_s *pm, disk_mg_s *dm, char *tname)
                 if (next == PAGEIDNULL)
                     break;
                 else{
-                    cur = mp_page_open(pm, dm, next);
+                    cur = mp_page_open(pm, dm, next, PAGE_ITYPE_BIT);
                     if (!cur) {}
                 }
             };
@@ -1288,7 +1296,7 @@ bool db_1_idelete(pool_mg_s *pm, disk_mg_s *dm, char *tname)
             if (brk)
                 break;
             else{
-                cur = mp_page_open(pm, dm, leftest_pid);
+                cur = mp_page_open(pm, dm, leftest_pid, PAGE_ITYPE_BIT);
                 if (!cur) {}
             }
         };

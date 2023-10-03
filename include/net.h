@@ -110,6 +110,7 @@ typedef struct conn_manager conn_manager_s;
  */
 #define TYPE_STATE_ACCEPT 0
 #define TYPE_STATE_CMDNOTFOUND 1
+#define TYPE_STATE_FAIL 2
 
 struct sys_args
 {

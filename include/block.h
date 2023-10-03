@@ -36,6 +36,8 @@ struct block
 #define BREAD 0x00000004
 #define BWRITE 0x00000008
 #define BOCCUPY 0x00000010
+#define PAGE_GTYPE_BIT 0x00000020
+#define PAGE_ITYPE_BIT 0x00000040
 
 #define PINSET(f) ((*f) |= BPIN)
 #define PINCLEAR(f) ((*f) &= 0xfffffffe)
@@ -56,5 +58,11 @@ struct block
 #define OCCUPYSET(f) ((*f) |= BOCCUPY)
 #define OCCUPYCLEAR(f) ((*f) &= 0xffffffef)
 #define OCCUPYCHECK(f) (f & BOCCUPY) ? true : false
+
+#define PAGE_GTYPE_SET(f) ((*f) |= PAGE_GTYPE_BIT)
+#define PAGE_GTYPE_CHECK(f) (f & PAGE_GTYPE_BIT)
+ 
+#define PAGE_ITYPE_SET(f) ((*f) |= PAGE_ITYPE_BIT)
+#define PAGE_ITYPE_CHECK(f) (f & PAGE_ITYPE_BIT)
 
 #endif /* BLOCK_H */

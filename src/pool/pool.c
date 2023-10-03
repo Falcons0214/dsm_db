@@ -114,7 +114,7 @@ void hook_info(pool_mg_s *pm, disk_mg_s *dm)
     pm->page_counter = *(uint32_t*)p_entry_read_by_index(sys_pool->buf_list[DBINFOINDEX].page, 0);
     pm->page_dir_tail = *(uint32_t*)p_entry_read_by_index(sys_pool->buf_list[DBINFOINDEX].page, 2);
     if (pm->page_dir_tail != 1)
-        mp_page_open(pm, dm, pm->page_dir_tail);
+        mp_page_open(pm, dm, pm->page_dir_tail, PAGE_GTYPE_BIT);
 }
 
 void load_info_from_disk(pool_mg_s *pm, disk_mg_s *dm)
@@ -123,9 +123,9 @@ void load_info_from_disk(pool_mg_s *pm, disk_mg_s *dm)
     for (int i = 0; i < 3; i ++) {
         if (i == 2) {
             free_top = *((uint32_t*)p_entry_read_by_index(pm->block_header[0].page, 1));
-            mp_page_open(pm, dm, free_top);     
+            mp_page_open(pm, dm, free_top, PAGE_GTYPE_BIT);
         }else
-            mp_page_open(pm, dm, i);
+            mp_page_open(pm, dm, i, PAGE_GTYPE_BIT);
     }
 
     hook_info(pm, dm);
@@ -183,6 +183,7 @@ void init_db_info(pool_mg_s *pm)
         gnode_s *tmp = gpt_allocate_node(i, blocks[i], GNODEFINISH);
         avl_node_s *avln = avl_alloc_node(tmp, i);
         gpt_push(&pm->gpt, avln);
+        PAGE_GTYPE_SET(&blocks[i]->flags);
     }
 
     free(blocks);
@@ -458,6 +459,7 @@ block_s* mp_page_create(pool_mg_s *pm, disk_mg_s *dm, uint16_t page_type, uint16
     page_init(block->page, data_width, page_id, PAGEIDNULL);
     p_entry_set_pagetype(block->page, page_type);
     block->state = PAGEINPOOL;
+    PAGE_GTYPE_SET(&block->flags);
     return block;
 }
 
@@ -486,6 +488,7 @@ block_s** mp_pages_create(pool_mg_s *pm, disk_mg_s *dm, int n)
         gpt_push(&pm->gpt, a_node);
         page_init(blocks[i]->page, 4, pages_id[i], PAGEIDNULL);
         blocks[i]->state = PAGEINPOOL;
+        PAGE_GTYPE_SET(&blocks[i]->flags);
     }
     return blocks;
 }
@@ -553,7 +556,7 @@ void mp_page_close(pool_mg_s *pm, disk_mg_s *dm, block_s *block, bool enforce)
  * Check page is already in pool.
  * If page in pool, return the block, if not load it.
  */
-block_s* mp_page_open(pool_mg_s *pm, disk_mg_s *dm, uint32_t page_id)
+block_s* mp_page_open(pool_mg_s *pm, disk_mg_s *dm, uint32_t page_id, uint32_t open_type)
 {
     block_s *block;
     avl_node_s *a_node = gpt_open_test_and_set(&pm->gpt, page_id);
@@ -590,6 +593,10 @@ block_s* mp_page_open(pool_mg_s *pm, disk_mg_s *dm, uint32_t page_id)
     }
     
     block->state = PAGEINPOOL;
+    if (open_type == PAGE_GTYPE_BIT)
+        PAGE_GTYPE_SET(&block->flags);
+    if (open_type == PAGE_ITYPE_BIT)
+        PAGE_ITYPE_SET(&block->flags);
     atomic_fetch_add(&block->reference_count, 1);
     return block;
 }
@@ -639,6 +646,7 @@ block_s* mp_index_create(pool_mg_s *pm, disk_mg_s *dm, uint16_t page_type, uint1
         blink_leaf_init((b_link_leaf_page_s*)block->page, page_id, PAGEIDNULL, PAGEIDNULL, entry_width, page_type);
 
     block->state = PAGEINPOOL;
+    PAGE_ITYPE_SET(&block->flags);
     return block;
 }
 

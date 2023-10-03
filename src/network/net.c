@@ -108,8 +108,8 @@ void* exec(void *args)
 	int cmd_number;
 	if (!conn) return NULL;
 	
-	int cfd = conn->fd, msg_value;
-	switch (recv(cfd, &msg_type, MSG_TYPE_SIZE, 0)) {
+	int cfd = conn->fd, msg_value, x;
+	switch (x = recv(cfd, &msg_type, MSG_TYPE_SIZE, 0)) {
 		case -1:
 			printf("recv error: %s\n", strerror(errno));
 			return NULL;
@@ -118,11 +118,14 @@ void* exec(void *args)
 				conn_close(conn);
 				printf("%d close\n", cfd);
 				return NULL;
-			}
+			}else
+				goto DO_NOTTHING;
+				// Occur when client break, but it didn't free fd !!
 			break;
 		default:
 			break;
 	}
+
 	recv(cfd, &msg_value, MSG_LENGTH_SIZE, 0);
 	if (msg_type == MSG_TYPE_CMD)
 		recv(cfd, buf, msg_value + 4, 0);
@@ -139,6 +142,7 @@ void* exec(void *args)
 		for (int i = 0; i < MAX_CONNECTIONS; i ++)
 			if (connmg->conn_table[i] && CINFO_GET_CLOSE_BIT(connmg->conn_table[i]->flags))
 				conn_close(connmg->conn_table[i]);
+DO_NOTTHING:
 	return NULL;
 }
 
@@ -234,11 +238,11 @@ int db_active(disk_mg_s *dm, pool_mg_s *pm, conn_manager_s *connmg, char *port)
 						msg_type = MSG_TYPE_CONNECT;
 						msg_value = TYPE_CONNECT_BIND;
 						__REPLY(conn_sock, msg_type, msg_value)
-					 	printf("BB fd: %d %d\n", cfd, conn_sock);
+					 	// printf("BB fd: %d %d\n", cfd, conn_sock);
 					}
 				}
 			}else{
-				printf("AA fd: %d %d\n", cfd, n);
+				// printf("AA fd: %d %d\n", cfd, n);
 				future = tpool_apply(connmg->tesk_pool, exec, (void*)connmg->conn_table[cfd - SYSRESERVFD]);
 				tpool_future_destroy(future);
 			}
@@ -248,31 +252,31 @@ int db_active(disk_mg_s *dm, pool_mg_s *pm, conn_manager_s *connmg, char *port)
     return 0;
 }
 
-void __attr_type_parser(char *str)
-{
-	uint16_t len;
-	char buf[128];
-    for (int index = 0; str[index] != '\0';) {
-        memcpy(&len, &str[index], 2);
-        memset(buf, 0, 128);
-        memcpy(buf, &str[index + 4], len);
-        printf("--> attr name: %d %s\n", len, buf);
-        printf("--> attr type: %d\n", *((uint16_t*)&str[index + 2]));
-        index += (len + 4);
-    }
-}
+// void __attr_type_parser(char *str)
+// {
+// 	uint16_t len;
+// 	char buf[128];
+//     for (int index = 0; str[index] != '\0';) {
+//         memcpy(&len, &str[index], 2);
+//         memset(buf, 0, 128);
+//         memcpy(buf, &str[index + 4], len);
+//         printf("--> attr name: %d %s\n", len, buf);
+//         printf("--> attr type: %d\n", *((uint16_t*)&str[index + 2]));
+//         index += (len + 4);
+//     }
+// }
 
-void __attr_value_parser(char *str)
-{
-	for (int i = 0, h = 0;; i ++, h ++) {
-		if (str[i] == '\0') {
-			printf("--> %s\n", &str[i - h + ((i == h) ? 0 : 1)]);
-			h = 0;
-			if (str[i + 1] == '\0')
-				break;
-		}
-	}
-}
+// void __attr_value_parser(char *str)
+// {
+// 	for (int i = 0, h = 0;; i ++, h ++) {
+// 		if (str[i] == '\0') {
+// 			printf("--> %s\n", &str[i - h + ((i == h) ? 0 : 1)]);
+// 			h = 0;
+// 			if (str[i + 1] == '\0')
+// 				break;
+// 		}
+// 	}
+// }
 
 void executer(sys_args_s *sysargs, conn_info_s *conn_info, uint32_t command, char *buf, int msg_len)
 {
@@ -292,7 +296,7 @@ void executer(sys_args_s *sysargs, conn_info_s *conn_info, uint32_t command, cha
 			break;
 		}
 	}
-	// printf("%d, %d, %d, %d\n", command, reply_type, msg_len, i);
+	printf("%d, %d, %d, %d\n", command, reply_type, msg_len, i);
 	// printf("table name: %s, command: %d\n", argv[0], command);
 
 	// if (command == CMD_G_CREATE || command == CMD_I_CREATE)
@@ -301,6 +305,5 @@ void executer(sys_args_s *sysargs, conn_info_s *conn_info, uint32_t command, cha
 	//  	__attr_value_parser(argv[1]);
 
 	simple_db_executer(sysargs, conn_info, argv, reply_type, command, msg_len - i);
-	// send(conn_info->fd, reply, strlen(reply), 0);
 	return;
 }
