@@ -320,11 +320,6 @@ bool db_1_tdelete(pool_mg_s *pm, disk_mg_s *dm, char *tname)
     return true;
 }
 
-void db_1_tread(pool_mg_s *pm, disk_mg_s *dm, int fd, char *tname, char **attrs, int limit)
-{
-
-}
-
 /*
  * !! No-thread safe for delete occur on same table.
  */
@@ -1328,7 +1323,12 @@ char* db_1_ischema(pool_mg_s *pm, disk_mg_s *dm, int fd, char *tname)
     return chunk;
 }
 
-void db_1_iread(pool_mg_s *pm, disk_mg_s *dm, int fd, char *tname, char **attrs, int limit)
+void db_1_tread(int fd, pool_mg_s *pm, disk_mg_s *dm, char *tname, int *arr)
+{
+
+}
+
+void db_1_iread(int fd, pool_mg_s *pm, disk_mg_s *dm, char *tname, int *arr)
 {
 
 }

@@ -5,6 +5,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/socket.h>
+#include <sys/types.h>
 #include <unistd.h>
 
 #include "./db_client.h"
@@ -214,6 +215,31 @@ char* __entry_key_formater(char *str)
     return (char*)key;   
 }
 
+char* __read_formater(char *str, int *tmp)
+{
+    int count = 2, index = 1, *inew;
+    for (int i = 0; str[i] != '\0'; i ++)
+        if (str[i] == ',')
+            count ++;
+
+    *tmp = count;
+    char *new = (char*)malloc(sizeof(uint32_t) * count);
+    memset(new, 0, *tmp);
+    inew = (int*)new;
+
+    for (int i = 0, h = 0;; i ++, h ++) {
+        if (str[i] == ',' || str[i] == '\0') {
+            inew[index ++] = atoi(&str[i - ((i == h) ? h : (h - 1))]);
+            if (str[i] == '\0') break;
+            h = 0;
+        }
+    }
+    inew[0] = count - 1;
+
+    *tmp *= sizeof(uint32_t);
+    return new;
+}
+
 /*
  * Arg 1: operation name
  * Arg 2: table name
@@ -258,7 +284,9 @@ __reply* dsm_table_cmd(ctoken_s *token, int args, char **argv)
             cmd2 == CMD_G_SEARCH || cmd2 == CMD_I_SEARCH) {
             argv[2] = __entry_key_formater(argv[2]);
             tmp = 4;
-        }
+        }else if (cmd2 == CMD_G_READ || cmd2 == CMD_I_READ)
+            argv[2] = __read_formater(argv[2], &tmp);
+
         memcpy(cur, argv[2], tmp);
     }
     // printf("key: %d, cmd: %d\n", *((uint32_t*)argv[2]), cmd2);

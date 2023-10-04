@@ -88,7 +88,6 @@ bool __show_page_info(block_s *block)
         printf("        -> Page type: <%s>\n", __b_type_str(b->header.page_type));
         return false;
     }
-
     printf("        -> Page id: %d\n", page->page_id);
     printf("        -> Page recrod: %d\n", page->record_num);
     printf("        -> Page data_width: %d\n", page->data_width);
@@ -347,10 +346,6 @@ void simple_db_executer(sys_args_s *sys, conn_info_s *cinfo, char **argv, char r
     switch (command) {
         case CMD_G_CREATE:
             __create_format(argv[1], &num, &attrs, &types_size, msg_len);
-            // printf("-->> %s\n", argv[0]);
-            for (int i = 0; i < num; i ++) {
-                printf("%d %s\n", types_size[i], attrs[i]);
-            }
             state = db_1_tcreate(pm, dm, argv[0], attrs, num, types_size);
             free(types_size);
             free(attrs);
@@ -377,11 +372,10 @@ void simple_db_executer(sys_args_s *sys, conn_info_s *cinfo, char **argv, char r
             free(attrs);
             break;
         case CMD_I_DELETE:
-            state = db_1_idelete(pm, dm, argv[0]);
+            // state = db_1_idelete(pm, dm, argv[0]);
             break;
         case CMD_I_INSERT: // OK
             value = __iinsert_format(argv[1]);
-            // printf(">>>> %d\n", __to_uint32(argv[1]));
             state = db_1_iinsert(pm, dm, argv[0], value, __to_uint32(argv[1]));
             free(value);
             break;
@@ -392,20 +386,20 @@ void simple_db_executer(sys_args_s *sys, conn_info_s *cinfo, char **argv, char r
             value = db_1_isearch(pm, dm, argv[0], *(int*)argv[1]);
             break;
         case CMD_G_READ:
-            // return db_1_tread();
+            return db_1_tread(cinfo->fd, pm, dm, argv[0], (int*)argv[1]);
         case CMD_I_READ:
-            // return db_1_iread();
+            return db_1_iread(cinfo->fd, pm, dm, argv[0], (int*)argv[1]);
         default:
             break;
     }
-    // printf("@@\n");
-    // reply_type = 3;
+
     memcpy(reply_buffer, &reply_type, MSG_TYPE_SIZE);
     switch (reply_type) {
         case MSG_TYPE_CONTENT:
             strcpy(&reply_buffer[MSG_TYPE_SIZE + MSG_LENGTH_SIZE], value);
             num = strlen(value);
             *((uint32_t*)&reply_buffer[MSG_TYPE_SIZE]) = num;
+            free(value);
             break;
         case MSG_TYPE_STATE:
             num = 0;

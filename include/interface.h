@@ -27,9 +27,10 @@ bool db_create_table(pool_mg_s*, disk_mg_s*, char*, char**, int, uint32_t*);
  * i: for index
  */
 // void db_1_primary_key_set(pool_mg_s*);
+
+block_s* db_1_topen(pool_mg_s*, disk_mg_s*, char*, char);
 bool db_1_tcreate(pool_mg_s*, disk_mg_s*, char*, char**, int, uint32_t*);
 bool db_1_tdelete(pool_mg_s*, disk_mg_s*, char*);
-void db_1_tread(pool_mg_s*, disk_mg_s*, int, char*, char**, int);
 bool db_1_tinsert(pool_mg_s*, disk_mg_s*, char*, char**);
 bool db_1_tremove_by_index(pool_mg_s*, disk_mg_s*, char*, int);
 char* db_1_tsearch(pool_mg_s*, disk_mg_s*, char*, int);
@@ -37,11 +38,11 @@ char* db_1_tschema(pool_mg_s*, disk_mg_s*, char*);
 
 bool db_1_icreate(pool_mg_s*, disk_mg_s*, char*, char**, int, uint32_t*);
 bool db_1_idelete(pool_mg_s*, disk_mg_s*, char*);
-void db_1_iread(pool_mg_s*, disk_mg_s*, int, char*, char**, int);
 bool db_1_iinsert(pool_mg_s*, disk_mg_s*, char*, char*, uint32_t);
 bool db_1_iremove(pool_mg_s*, disk_mg_s*, char*, int);
 char* db_1_isearch(pool_mg_s*, disk_mg_s*, char*, int);
 char* db_1_ischema(pool_mg_s*, disk_mg_s*, int, char*);
 
-block_s* db_1_topen(pool_mg_s*, disk_mg_s*, char*, char);
+void db_1_iread(int, pool_mg_s*, disk_mg_s*, char*, int*);
+void db_1_tread(int, pool_mg_s*, disk_mg_s*, char*, int*);
 #endif /* INTERFACE_H */
