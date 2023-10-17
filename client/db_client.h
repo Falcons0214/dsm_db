@@ -18,7 +18,7 @@
 typedef struct ctoken ctoken_s;
 typedef struct __reply __reply;
 
-#define BUFSIZE 1024
+#define BUFSIZE 4096
 #define LISTENQ 1024
 
 #define SEPARATE_SIGN '|'
@@ -127,6 +127,19 @@ typedef struct __reply __reply;
 #define __STR64 7
 #define __STR128 8
 #define __STR256 9
+
+/*
+ * MSG_TYPE_STATE state:
+ */
+#define TYPE_STATE_ACCEPT 0
+#define TYPE_STATE_CMDNOTFOUND 1
+#define TYPE_STATE_FAIL 2
+
+/*
+ * MSG_TYPE_CONTENT state:
+ */
+#define TYPE_CONTENT_AC 0
+#define TYPE_CONTENT_FA 1
 
 struct __reply
 {

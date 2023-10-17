@@ -240,6 +240,27 @@ char* __read_formater(char *str, int *tmp)
     return new;
 }
 
+__reply* db_reply_handler(int fd, __reply *reply, char *buf)
+{
+    char msg_type;
+    uint32_t msg_length;
+
+    memset(buf, 0, BUFSIZE);
+
+    recv(fd, &msg_type, MSG_TYPE_SIZE, 0);
+    recv(fd, &msg_length, MSG_LENGTH_SIZE, 0);
+
+    if (msg_type == MSG_TYPE_CONTENT) {
+        // recv(token->serv_fd, buf, msg_length, 0);
+    }
+    
+    reply->type = msg_type;
+    reply->content = (msg_type == MSG_TYPE_CONTENT) ? buf : NULL;
+    reply->len = msg_length;
+
+    return reply;
+}
+
 /*
  * Arg 1: operation name
  * Arg 2: table name
@@ -296,15 +317,5 @@ __reply* dsm_table_cmd(ctoken_s *token, int args, char **argv)
     
     // __attr_type_parser(argv[2]);
     send(token->serv_fd, buf, msg_length + 9, 0);
-    
-    recv(token->serv_fd, &msg_type, MSG_TYPE_SIZE, 0);
-    recv(token->serv_fd, &msg_length, MSG_LENGTH_SIZE, 0);
-    if (msg_type == MSG_TYPE_CONTENT) {
-        // recv(token->serv_fd, buf, msg_length, 0);
-    }
-    
-    reply->type = msg_type;
-    reply->content = (msg_type == MSG_TYPE_CONTENT) ? buf : NULL;
-    reply->len = msg_length;
-    return reply;
+    return db_reply_handler(token->serv_fd, reply, buf);
 }

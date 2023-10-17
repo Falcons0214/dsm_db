@@ -59,6 +59,7 @@ typedef struct conn_manager conn_manager_s;
 #define MSG_TYPE_CMD 1
 #define MSG_TYPE_CONTENT 2
 #define MSG_TYPE_STATE 3
+#define MSG_TYPE_CONTENT_END 4
 
 /*
  * MSG_TYPE_CONNECT state:
@@ -82,14 +83,14 @@ typedef struct conn_manager conn_manager_s;
 #define CMD_G_INSERT 2 // table name & record attributes value
 #define CMD_G_REMOVE 3 // record number
 #define CMD_G_SEARCH 4 // record number
-#define CMD_G_READ 10 // table name
+#define CMD_G_READ 10 // table name & start id & records
 
 #define CMD_I_CREATE 5 // table name  & attr string & type
 #define CMD_I_DELETE 6 // table name
 #define CMD_I_INSERT 7 // table name & record attribtues value
 #define CMD_I_REMOVE 8 // record key
 #define CMD_I_SEARCH 9 // record key
-#define CMD_I_READ 11 // table name
+#define CMD_I_READ 11 // table name & start id & records
 
 #define CONTENT_STATE_BIT 0x00010000
 #define IS_CONTENT_UP(x) (x & CONTENT_STATE_BIT)
@@ -111,6 +112,12 @@ typedef struct conn_manager conn_manager_s;
 #define TYPE_STATE_ACCEPT 0
 #define TYPE_STATE_CMDNOTFOUND 1
 #define TYPE_STATE_FAIL 2
+
+/*
+ * MSG_TYPE_CONTENT state:
+ */
+#define TYPE_CONTENT_AC 0
+#define TYPE_CONTENT_FA 1
 
 struct sys_args
 {

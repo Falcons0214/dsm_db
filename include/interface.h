@@ -33,16 +33,16 @@ bool db_1_tcreate(pool_mg_s*, disk_mg_s*, char*, char**, int, uint32_t*);
 bool db_1_tdelete(pool_mg_s*, disk_mg_s*, char*);
 bool db_1_tinsert(pool_mg_s*, disk_mg_s*, char*, char**);
 bool db_1_tremove_by_index(pool_mg_s*, disk_mg_s*, char*, int);
-char* db_1_tsearch(pool_mg_s*, disk_mg_s*, char*, int);
-char* db_1_tschema(pool_mg_s*, disk_mg_s*, char*);
 
 bool db_1_icreate(pool_mg_s*, disk_mg_s*, char*, char**, int, uint32_t*);
 bool db_1_idelete(pool_mg_s*, disk_mg_s*, char*);
 bool db_1_iinsert(pool_mg_s*, disk_mg_s*, char*, char*, uint32_t);
 bool db_1_iremove(pool_mg_s*, disk_mg_s*, char*, int);
-char* db_1_isearch(pool_mg_s*, disk_mg_s*, char*, int);
-char* db_1_ischema(pool_mg_s*, disk_mg_s*, int, char*);
 
-void db_1_iread(int, pool_mg_s*, disk_mg_s*, char*, int*);
-void db_1_tread(int, pool_mg_s*, disk_mg_s*, char*, int*);
+char* db_1_tschema(pool_mg_s*, disk_mg_s*, char*);
+char* db_1_ischema(pool_mg_s*, disk_mg_s*, int, char*);
+char db_1_tsearch(int, pool_mg_s*, disk_mg_s*, char*, int);
+char db_1_isearch(int, pool_mg_s*, disk_mg_s*, char*, int);
+char db_1_tread(int, pool_mg_s*, disk_mg_s*, char*, int*);
+char db_1_iread(int, pool_mg_s*, disk_mg_s*, char*, int*);
 #endif /* INTERFACE_H */

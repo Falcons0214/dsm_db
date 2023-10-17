@@ -17,6 +17,7 @@ char *name = "iphone_xxxYYY";
 char *data1 = "XZ_address str16,name str8,x_id int16,g_id int16";
 char *data2 = "2341001,DK_GRX_123_456,teams,1234,5678";
 char *data3 = "23";
+char *data4 = "10,0,1,2,3";
 
 char* show_state(int x)
 {
@@ -33,8 +34,7 @@ char* show_state(int x)
 int main()
 {
     ctoken_s *token;
-    __reply *reply;
-
+    
     char *argv[3];
 
     token = dsm_connect(SERVERIP, SERVERPORT);
@@ -43,13 +43,11 @@ int main()
     }
     printf("Binding successed !\n");
 
-    argv[0] = TG_CREATE;
+    argv[0] = TG_DELETE;
     argv[1] = name;
     argv[2] = data1;
-    // argv[2] = NULL;
-    reply = dsm_table_cmd(token, 3, argv);
-    
-    printf("reply state: %s\n", show_state(reply->type));
+    argv[2] = NULL;
+    dsm_table_cmd(token, 3, argv);
     
     printf("Here !\n");
 

@@ -338,10 +338,9 @@ void simple_db_executer(sys_args_s *sys, conn_info_s *cinfo, char **argv, char r
 {
     disk_mg_s *dm = sys->dm;
     pool_mg_s *pm = sys->pm;
-    char state, *value, reply_buffer[512];
-    int num = 0;
-    char **attrs = NULL;
+    char state, *value, **attrs = NULL, reply_buffer[MSG_TYPE_SIZE + MSG_LENGTH_SIZE];
     uint32_t *types_size = NULL;
+    int num = 0;
 
     switch (command) {
         case CMD_G_CREATE:
@@ -383,31 +382,29 @@ void simple_db_executer(sys_args_s *sys, conn_info_s *cinfo, char **argv, char r
             state = db_1_iremove(pm, dm, argv[0], *(int*)argv[1]);
             break;
         case CMD_I_SEARCH:
-            value = db_1_isearch(pm, dm, argv[0], *(int*)argv[1]);
+            state = db_1_isearch(cinfo->fd, pm, dm, argv[0], *(int*)argv[1]);
             break;
         case CMD_G_READ:
-            return db_1_tread(cinfo->fd, pm, dm, argv[0], (int*)argv[1]);
+            state = db_1_tread(cinfo->fd, pm, dm, argv[0], (int*)argv[1]);
         case CMD_I_READ:
-            return db_1_iread(cinfo->fd, pm, dm, argv[0], (int*)argv[1]);
+            state = db_1_iread(cinfo->fd, pm, dm, argv[0], (int*)argv[1]);
         default:
             break;
     }
 
     memcpy(reply_buffer, &reply_type, MSG_TYPE_SIZE);
+
     switch (reply_type) {
         case MSG_TYPE_CONTENT:
-            strcpy(&reply_buffer[MSG_TYPE_SIZE + MSG_LENGTH_SIZE], value);
-            num = strlen(value);
-            *((uint32_t*)&reply_buffer[MSG_TYPE_SIZE]) = num;
-            free(value);
+            reply_buffer[0] = MSG_TYPE_CONTENT_END;
+            *((uint32_t*)&reply_buffer[MSG_TYPE_SIZE]) = (state) ? TYPE_CONTENT_AC : TYPE_CONTENT_FA;
             break;
         case MSG_TYPE_STATE:
-            num = 0;
             *((uint32_t*)&reply_buffer[MSG_TYPE_SIZE]) = (state) ? TYPE_STATE_ACCEPT : TYPE_STATE_FAIL;
             break;
     }
     
-    send(cinfo->fd, reply_buffer, MSG_TYPE_SIZE + MSG_LENGTH_SIZE + num, 0);
+    send(cinfo->fd, reply_buffer, MSG_TYPE_SIZE + MSG_LENGTH_SIZE, 0);
     __db_show_pages_info(dm, pm, 1);
     return;
 }

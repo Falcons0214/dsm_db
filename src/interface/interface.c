@@ -607,11 +607,11 @@ bool db_1_tremove_by_index(pool_mg_s *pm, disk_mg_s *dm, char *tname, int record
     return true;
 }
 
-char* db_1_tsearch(pool_mg_s *pm, disk_mg_s *dm, char *tname, int num)
+char db_1_tsearch(int fd, pool_mg_s *pm, disk_mg_s *dm, char *tname, int num)
 {
-    
+    char state;
 
-    return NULL;
+    return state;
 }
 
 char* db_1_tschema(pool_mg_s *pm, disk_mg_s *dm, char *tname)
@@ -926,10 +926,10 @@ BLINK_INSERT_TO_PREV_LEVEL:
     return true;
 }
 
-char* db_1_isearch(pool_mg_s *pm, disk_mg_s *dm, char *tname, int key)
+char db_1_isearch(int fd, pool_mg_s *pm, disk_mg_s *dm, char *tname, int key)
 {
     block_s *blink_table, *cur;
-    char *tmp;
+    char *tmp, state;
     uint32_t page_id, upbound;
 
     blink_table = db_1_topen(pm, dm, tname, BLINK);
@@ -970,7 +970,7 @@ char* db_1_isearch(pool_mg_s *pm, disk_mg_s *dm, char *tname, int key)
 
     isd_is_release((isdlock_s*)blink_table->tmp);
 
-    return tmp;
+    return state;
 } 
 
 bool db_1_iremove(pool_mg_s *pm, disk_mg_s *dm, char *tname, int key)
@@ -1323,12 +1323,12 @@ char* db_1_ischema(pool_mg_s *pm, disk_mg_s *dm, int fd, char *tname)
     return chunk;
 }
 
-void db_1_tread(int fd, pool_mg_s *pm, disk_mg_s *dm, char *tname, int *arr)
+char db_1_tread(int fd, pool_mg_s *pm, disk_mg_s *dm, char *tname, int *arr)
 {
 
 }
 
-void db_1_iread(int fd, pool_mg_s *pm, disk_mg_s *dm, char *tname, int *arr)
+char db_1_iread(int fd, pool_mg_s *pm, disk_mg_s *dm, char *tname, int *arr)
 {
 
 }
